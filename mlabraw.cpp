@@ -721,7 +721,12 @@ static PyMethodDef MlabrawMethods[] = {
   { NULL,         NULL,               0           , NULL}, // sentinel
 };
 
+// FIXME untested WIN32
+#ifdef WIN32
+extern "C" __declspec( dllexport ) void initmlabraw(void);
+#else
 extern "C" void initmlabraw(void);
+#endif
 
 void initmlabraw(void)
 {
