@@ -3,6 +3,12 @@
   interface and supports passing Numeric arrays back and forth. It is
   derived from Andrew Sterian's pymat.
 
+  - TODO:
+     - rank > 2 arrays
+     - string arrays
+     - arrays of different types (uint8 etc.)
+     - cells and struct support
+     - parameters that control autocasting
 
   - FIXME:
     * add test cases (different array types and 0d arrays and '__array__'able
@@ -25,6 +31,8 @@
        passing incorrect types to the functions of this module now raises
        TypeErrors. Bizzarre violations (out of matlab(tm)-memory) continue to
        raise RuntimeErrors.
+     - multidimensional string arrays are no longer concatenated (but
+       currently just ignored)
        
    * Bug fixes:
      - fixed serious memory violation bug: conversion of all flat Numeric
@@ -33,10 +41,13 @@
        to `put` (0-d arrays (now converted), numbers (now converted) and other
        non-array types (now should cause a warning message))
      - removed broken autoconversion (see above)
+     - fixed compatibility for matlab 6.5 (untested)
      
    * Misc:
-     - reformated source code
+     - reformated source code, kicked out NEQ and EQ and changed 0 to NULL
+       where appropriate
      - reformated and adapted documentation.
+
 
   pymat version 1.0 -- December 26, 1998, Andrew Sterian (asterian@umich.edu)
   ---------------------------------------------------------------------------
@@ -80,20 +91,15 @@
 
 #include <Python.h>
 #include <Numeric/arrayobject.h>
-#include <stdio.h> // AWMS
 #include <engine.h>
-
-#define AND &&
-#define OR  ||
-#define EQ  ==
-#define NEQ !=
 
 #ifndef max
 #define max(x,y) ((x) > (y) ? (x) : (y))
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #endif
 
-static PyObject* mlabraw_error = PyErr_NewException("mlabraw.error", NULL, NULL);
+//#define Py_DECREF(x) { if (x == NULL) {printf ("FUCKING HELL\n");}}
+static PyObject *mlabraw_error;
 
 static void pyGenericError(PyObject *pException, const char *fmt, ...)
 {
@@ -119,20 +125,24 @@ static void _pyassert(const char *pStr)
 
 //////////////////////////////////////////////////////////////////////////////
 
+// FIXME: add string array support
 static PyStringObject *mx2char(const mxArray *pArray)
 {
   int buflen;
   char *buf;
   PyStringObject *lRetval;
-
-  buflen = mxGetM(pArray)*mxGetN(pArray) + 1;
+  if (mxGetM(pArray) != 1) {
+    pyGenericError(mlabraw_error, "Only 1 Dimensional strings are currently supported");
+    return NULL;
+  }
+  buflen = mxGetN(pArray) + 1;
   buf = (char *)mxCalloc(buflen, sizeof(char));
   pyassert(buf, "Out of MATLAB(TM) memory");
 
   if (mxGetString(pArray, buf, buflen)) {
     pyGenericError(mlabraw_error, "Unable to extract MATLAB(TM) string");
     mxFree(buf);
-    return 0;
+    return NULL;
   }
 
   lRetval = (PyStringObject *)PyString_FromString(buf);
@@ -140,14 +150,14 @@ static PyStringObject *mx2char(const mxArray *pArray)
   return lRetval;
 
  error_return:
-  return 0;
+  return NULL;
 }
 
 static PyArrayObject *mx2numeric(const mxArray *pArray)
 {
   int nd;
   const int *dims;
-  PyArrayObject *lRetval = 0;
+  PyArrayObject *lRetval = NULL;
   int lRows, lCols;
   const double *lPR;
   const double *lPI;
@@ -159,14 +169,14 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
   if (nd > 2) {
     pyGenericError(PyExc_TypeError, 
                    "Only 1-D and 2-D arrays are currently supported");
-    return 0;
+    return NULL;
   }
 
   dims = mxGetDimensions(pArray);
   lRetval = (PyArrayObject *)PyArray_FromDims(nd, const_cast<int *>(dims), 
                                               mxIsComplex(pArray) ? 
                                               PyArray_CDOUBLE : PyArray_DOUBLE);
-  if (lRetval EQ 0) return 0;
+  if (lRetval == NULL) return NULL;
 
   lRows = mxGetM(pArray);
   lCols = mxGetN(pArray);
@@ -193,39 +203,40 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
   return lRetval;
 
  error_return:
-  return 0;
+  return NULL;
 }
 
 template <class T>
-inline void copyNumericVector2Mx(T *pSrc, int pRows, double *pDst, int *pStrides)
+static inline void copyNumericVector2Mx(T *pSrc, int pRows, double *pDst, int *pStrides)
 {
   // this is a horrible HACK for 0-D arrays (which have no strides);
   // it should also work for shape (1,) 1D arrays.
   // XXX: check that 1Ds are always OK!
   if (pRows == 1){               
     *pDst = *pSrc;
-    return;
-  }
-  int lRowDelta = pStrides[0]/sizeof(T);
-  for (int lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
-    *pDst++ = *pSrc;
+  } 
+  else {
+    int lRowDelta = pStrides[0]/sizeof(T);
+    for (int lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
+      *pDst++ = *pSrc;
+    }
   }
 }
 
 template <class T>
-inline void copyNumeric2Mx(T *pSrc, int pRows, int pCols, double *pDst, int *pStrides)
+static inline void copyNumeric2Mx(T *pSrc, int pRows, int pCols, double *pDst, int *pStrides)
 {
-  int lRowDelta = pStrides[1]/sizeof(T);
-  int lColDelta = pStrides[0]/sizeof(T);
+  int lRowDelta = pStrides[0]/sizeof(T);
+  int lColDelta = pStrides[1]/sizeof(T);
   for (int lCol=0; lCol < pCols; lCol++) {
-    T *lSrc = pSrc + lCol*lRowDelta;
-    for (int lRow=0; lRow < pRows; lRow++, lSrc += lColDelta) {
+    T *lSrc = pSrc + lCol*lColDelta;
+    for (int lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
       *pDst++ = *lSrc;
     }
   }
 }
 template <class T>
-inline void copyCplxNumericVector2Mx(T *pSrc, int pRows, double *pRData, 
+static inline void copyCplxNumericVector2Mx(T *pSrc, int pRows, double *pRData, 
                               double *pIData, int *pStrides)
 {
   int lRowDelta = pStrides[0]/sizeof(T);
@@ -236,15 +247,16 @@ inline void copyCplxNumericVector2Mx(T *pSrc, int pRows, double *pRData,
 }
 
 template <class T>
-inline void copyCplxNumeric2Mx(T *pSrc, int pRows, int pCols, double *pRData, 
+static inline void copyCplxNumeric2Mx(T *pSrc, int pRows, int pCols, double *pRData, 
                         double *pIData, int *pStrides)
 {
-  int lRowDelta = pStrides[1]/sizeof(T);
-  int lColDelta = pStrides[0]/sizeof(T);
+  int lRowDelta = pStrides[0]/sizeof(T);
+  int lColDelta = pStrides[1]/sizeof(T);
+
 
   for (int lCol=0; lCol < pCols; lCol++) {
-    T *lSrc = pSrc + lCol*lRowDelta;
-    for (int lRow=0; lRow < pRows; lRow++, lSrc += lColDelta) {
+    T *lSrc = pSrc + lCol*lColDelta;
+    for (int lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
       *pRData++ = lSrc[0];
       *pIData++ = lSrc[1];
     }
@@ -256,9 +268,9 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
   int lRows, lCols;
   bool lIsComplex;
   bool lIsNotAMatrix = false;
-  double *lR = 0;
-  double *lI = 0;
-  mxArray *lRetval = 0;
+  double *lR = NULL;
+  double *lI = NULL;
+  mxArray *lRetval = NULL;
     
   switch (pSrc->nd) {
   case 0:                       // XXX the evil 0D
@@ -287,7 +299,7 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
   switch (pSrc->descr->type_num) {
   case PyArray_OBJECT:
     pyGenericError(PyExc_TypeError, "Non-numeric array types not supported");
-    return 0;
+    return NULL;
         
   case PyArray_CFLOAT:
   case PyArray_CDOUBLE:
@@ -300,7 +312,7 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
     
   lRetval = mxCreateDoubleMatrix(lRows, lCols, lIsComplex ? mxCOMPLEX : mxREAL);
 
-  if (lRetval EQ 0) return 0;
+  if (lRetval == NULL) return NULL;
 
   lR = mxGetPr(lRetval);
   lI = mxGetPi(lRetval);
@@ -392,25 +404,26 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
   return lRetval;
 
  error_return:
-  return 0;
+  return NULL;
 }
 
 static mxArray *makeMxFromSeq(const PyObject *pSrc)
 {
-  mxArray *lRetval = 0;
+  mxArray *lRetval = NULL;
   int i, lSize;
 
   PyArrayObject *lArray = 
     (PyArrayObject *) PyArray_ContiguousFromObject(const_cast<PyObject *>(pSrc), 
                                                    PyArray_CDOUBLE, 0, 0);
-  if (lArray EQ 0) return 0;
-
+  if (lArray == NULL) return NULL;
+  // AWMS: FIXME this is not a particularly intelligent way to set about
+  // things
   // If all imaginary components are 0, this is not a complex array.
   lSize = PyArray_SIZE(lArray);
   // Get at first imaginary element
   const double *lPtr = (const double *)(lArray->data) + 1;
   for (i=0; i < lSize; i++, lPtr += 2) {
-    if (*lPtr NEQ 0.0) break;
+    if (*lPtr != 0.0) break;
   }
   if (i >= lSize) {
     PyArrayObject *lNew = (PyArrayObject *)PyArray_Cast(lArray, PyArray_DOUBLE);
@@ -423,13 +436,13 @@ static mxArray *makeMxFromSeq(const PyObject *pSrc)
 
   return lRetval;
 }
-// XXX de const'ed pSrc
+
 static mxArray *numeric2mx(PyObject *pSrc)
 {
-  mxArray *lDst = 0;
+  mxArray *lDst = NULL;
 
   pyassert(PyArray_API, "Unable to perform this function without NumPy installed");
-
+  
   if (PyArray_Check(pSrc)) {
     lDst = makeMxFromNumeric((const PyArrayObject *)pSrc);
   } else if (PySequence_Check(pSrc)) {
@@ -443,26 +456,28 @@ static mxArray *numeric2mx(PyObject *pSrc)
     else if (PyInt_Check(pSrc) || PyLong_Check(pSrc) ||
              PyFloat_Check(pSrc) || PyComplex_Check(pSrc)){
     PyObject *t;
-    t = PyTuple_New(1);
-    PyTuple_SetItem(t, 0, pSrc);
+    t = Py_BuildValue("(O)", pSrc);
+//     t = PyTuple_New(1);
+//     PyTuple_SetItem(t, 0, pSrc);
     lDst = makeMxFromSeq(t);
+    Py_DECREF(t); // FIXME check this
   } else {
     
   }
   return lDst;
 
  error_return:
-  return 0;
+  return NULL;
   }
 
 static mxArray *char2mx(const PyObject *pSrc)
 {
-  mxArray *lDst = 0;
+  mxArray *lDst = NULL;
 
   lDst = mxCreateString(PyString_AsString(const_cast<PyObject *>(pSrc)));
-  if (lDst EQ 0) {
+  if (lDst == NULL) {
     pyGenericError(mlabraw_error, "Unable to create MATLAB(TM) string");
-    return 0;
+    return NULL;
   }
 
   return lDst;
@@ -495,8 +510,8 @@ static char open_doc[] =
 PyObject * mlabraw_open(PyObject *, PyObject *args)
 {
   Engine *ep;
-  char *lStr = 0;
-  if (! PyArg_ParseTuple(args, "|s:open", &lStr)) return 0;
+  char *lStr = "\0"; // "matlab -check_malloc";
+  if (! PyArg_ParseTuple(args, "|s:open", &lStr)) return NULL;
 
   pyassert(sizeof(int) >= sizeof(Engine *), 
          "Oops! Pointers on this architecture are too big to fit in integers");
@@ -506,15 +521,15 @@ PyObject * mlabraw_open(PyObject *, PyObject *args)
 #else
   ep = engOpen(lStr);
 #endif
-  if (ep EQ 0) {
+  if (ep == NULL) {
     pyGenericError(mlabraw_error, "Unable to start MATLAB(TM) engine");
-    return 0;
+    return NULL;
   }
 
   return Py_BuildValue("i", int(ep));
 
  error_return:
-  return 0;
+  return NULL;
 }
 
 static char close_doc[] = 
@@ -529,11 +544,11 @@ PyObject * mlabraw_close(PyObject *, PyObject *args)
 {
   int lHandle;
 
-  if (! PyArg_ParseTuple(args, "i:close", &lHandle)) return 0;
+  if (! PyArg_ParseTuple(args, "i:close", &lHandle)) return NULL;
 
-  if (engClose((Engine *)lHandle) NEQ 0) {
+  if (engClose((Engine *)lHandle) != 0) {
     pyGenericError(mlabraw_error, "Unable to close session");
-    return 0;
+    return NULL;
   }
 
   Py_INCREF(Py_None);
@@ -563,24 +578,27 @@ PyObject * mlabraw_eval(PyObject *, PyObject *args)
   PyObject *ret;
   int lHandle;
     
-  if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return 0;
+  if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return NULL;
   engOutputBuffer((Engine *)lHandle, buffer, BUFSIZE-1);
-  if (engEvalString((Engine *)lHandle, lStr) NEQ 0) {
+  if (engEvalString((Engine *)lHandle, lStr) != 0) {
     pyGenericError(mlabraw_error, 
                    "Unable to evaluate string in MATLAB(TM) workspace");
-    return 0;
+    return NULL;
   }
   // "??? " is how an error message begins in matlab
   // obviously there is no proper way to test whether a command was
   // succesful... AAARGH
-  if (strstr(buffer, ">> ??? ") EQ buffer) {
+  if (strstr(buffer, ">> ??? ") == buffer) {
     pyGenericError(mlabraw_error, buffer + 7); // skip ">> ??? "
-    return 0;
+    return NULL;
   }
   // AWMS XXX skip first three chars of prompt
   if (strcmp(">> ", buffer) <= 0)
     retStr = buffer + 3;
   else
+//     printf("#DEBUG: matlab output doesn't start with \">> \"!\n"
+//            "It starts with: '%s'\n"
+//            "The command was: '%s'\n", buffer, lStr);
     retStr = buffer;
   ret = (PyObject *)PyString_FromString(retStr);
   return ret;
@@ -608,25 +626,30 @@ PyObject * mlabraw_get(PyObject *, PyObject *args)
 {
   char *lName;
   int lHandle;
-  mxArray *lArray = 0;
-  PyObject *lDest = 0;
+  mxArray *lArray = NULL;
+  PyObject *lDest = NULL;
 
-  if (! PyArg_ParseTuple(args, "is:get", &lHandle, &lName)) return 0;
-
+  if (! PyArg_ParseTuple(args, "is:get", &lHandle, &lName)) return NULL;
+  
+// for matlab >= 6.5 (FIXME UNTESTED)
+#ifdef engGetVariable
+  lArray = engGetVariable((Engine *)lHandle, lName);
+# else
   lArray = engGetArray((Engine *)lHandle, lName);
-  if (lArray EQ 0) {
+#endif
+  if (lArray == NULL) {
     pyGenericError(mlabraw_error, 
                    "Unable to get matrix from MATLAB(TM) workspace");
-    return 0;
+    return NULL;
   }
 
   if (mxIsChar(lArray)) {
     lDest = (PyObject *)mx2char(lArray);
   } else if (mxIsDouble(lArray)) {
     lDest = (PyObject *)mx2numeric(lArray);
-  } else {                      // FIXME and numbers... and sequences...
+  } else {                      // FIXME structs, cells and non-double arrays
     pyGenericError(PyExc_TypeError, "Only strings and Numeric arrays are supported.");
-    return 0;
+    return NULL;
   }
   mxDestroyArray(lArray);
 
@@ -654,9 +677,9 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
   char *lName;
   int lHandle;
   PyObject *lSource;
-  mxArray *lArray = 0;
+  mxArray *lArray = NULL;
 
-  if (! PyArg_ParseTuple(args, "isO:put", &lHandle, &lName, &lSource)) return 0;
+  if (! PyArg_ParseTuple(args, "isO:put", &lHandle, &lName, &lSource)) return NULL;
   Py_INCREF(lSource);
 
   if (PyString_Check(lSource)) {
@@ -666,32 +689,35 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
   }
   Py_DECREF(lSource);
 
-  if (lArray EQ 0) {
-    return 0;   // Above converter already set error message
+  if (lArray == NULL) {
+    return NULL;   // Above converter already set error message
   }
+  
 
+// for matlab version >= 6.5 (FIXME UNTESTED)
+#ifdef engPutVariable
+  if engPutVariable((Engine *)lHandle, lName, lArray != 0) {
+#else
   mxSetName(lArray, lName);
-
-  if (engPutArray((Engine *)lHandle, lArray) NEQ 0) {
+  if (engPutArray((Engine *)lHandle, lArray) != 0) {
+#endif
     pyGenericError(mlabraw_error, 
                    "Unable to put matrix into MATLAB(TM) workspace");
     mxDestroyArray(lArray);
-    return 0;
+    return NULL;
   }
-
-  //mxDestroyArray(lArray);
 
   Py_INCREF(Py_None);
   return Py_None;
 }
 
 static PyMethodDef MlabrawMethods[] = {
-  { "open",       mlabraw_open,       1, open_doc },
-  { "close",      mlabraw_close,      1, close_doc },
-  { "eval",       mlabraw_eval,       1, eval_doc },
-  { "get",        mlabraw_get,        1, get_doc },
-  { "put",        mlabraw_put,        1, put_doc },
-  { 0, 0}
+  { "open",       mlabraw_open,       METH_VARARGS, open_doc },
+  { "close",      mlabraw_close,      METH_VARARGS, close_doc },
+  { "eval",       mlabraw_eval,       METH_VARARGS, eval_doc },
+  { "get",        mlabraw_get,        METH_VARARGS, get_doc },
+  { "put",        mlabraw_put,        METH_VARARGS, put_doc },
+  { NULL,         NULL,               0           , NULL}, // sentinel
 };
 
 extern "C" void initmlabraw(void);
@@ -748,6 +774,7 @@ void initmlabraw(void)
   PyObject *dict = PyModule_GetDict(module);
   PyObject *item = PyString_FromString(MLABRAW_VERSION);
   PyDict_SetItemString(dict, "__version__", item);
-  Py_XDECREF(item);
+  Py_DECREF(item);
+  mlabraw_error = PyErr_NewException("mlabraw.error", NULL, NULL);
   PyDict_SetItemString(dict, "error", mlabraw_error);
 }
