@@ -38,6 +38,7 @@ if sys.version_info < (2,2):
 # windows
 if sys.platform.startswith('win'):
     MATLAB_LIBRARIES = MATLAB_LIBRARIES or 'libeng libmx'.split()
+    CPP_LIBRARIES = [] #XXX shouldn't need CPP libs for windoze
     print >> sys.stderr, "WINDOZE INSTALL UNTESTED: best of luck!"
     if not MATLAB_DIR:
         try:
@@ -52,7 +53,8 @@ please edit setup.py by hand and set MATLAB_DIR
 # unices
 else:
     MATLAB_LIBRARIES = MATLAB_LIBRARIES or \
-                       'eng mx mat mi ut'.split()  #FIXME stdc++?
+                       'eng mx mat mi ut'.split()
+    CPP_LIBRARIES = ['stdc++'] #XXX strangely  only needed on some linuxes
     # try to guess where matlab is
     if not MATLAB_DIR:
         try:
@@ -93,9 +95,9 @@ setup (# Distribution meta-data
            Extension('mlabrawmodule', ['mlabraw.cpp'],
               define_macros=DEFINE_MACROS,
               library_dirs=MATLAB_LIBRARY_DIRS ,
-              libraries=MATLAB_LIBRARIES,
-                      include_dirs=MATLAB_INCLUDE_DIRS + (PYTHON_INCLUDE_DIR and [PYTHON_INCLUDE_DIR] or []),
-                      extra_compile_args=EXTRA_COMPILE_ARGS,
-                      ),
+              libraries=MATLAB_LIBRARIES + CPP_LIBRARIES,
+                     include_dirs=MATLAB_INCLUDE_DIRS + (PYTHON_INCLUDE_DIR and [PYTHON_INCLUDE_DIR] or []),
+                     extra_compile_args=EXTRA_COMPILE_ARGS,
+                     ),
            ]
-      )
+       ) 
