@@ -17,7 +17,7 @@
   Revision History
   ================
 
-  mlabraw version 0.9b1 -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
+  mlabraw version 0.9b2 -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
   --------------------------------------------------------------------------
   A modified, bugfixed and renamed version of pymat.
    
@@ -694,7 +694,7 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
 
 // for matlab version >= 6.5 (FIXME UNTESTED)
 #ifdef _V6_5_OR_LATER
-  if (engPutVariable((Engine *)lHandle, lName, lArray != 0)) {
+  if (engPutVariable((Engine *)lHandle, lName, lArray) != 0) {
 #else
   mxSetName(lArray, lName);
   if (engPutArray((Engine *)lHandle, lArray) != 0) {

@@ -416,6 +416,11 @@ class MlabWrap(object):
         procedure, otherwise it is executed as function (default), nout
         specifying how many values should be returned (default 1).
 
+        **Beware that if you use don't specify ``nout=0`` for a `cmd` that
+        never returns a value will raise an error** (because assigning a
+        variable to a call that doesn't return a value is illegal in matlab).
+        
+
         `cast` specifies which typecast should be applied to the result
         (e.g. `int`), it defaults to none.
 
