@@ -21,6 +21,7 @@ if not MATLAB_DIR:
                  re.sub(r'/bin/.*', '', os.popen('which matlab').read())]:
         if os.path.exists(path):
             MATLAB_DIR = path
+            break
     else:
         print >> sys.stderr, """\
 ERROR: CAN'T FIND MATLAB DIR
@@ -46,7 +47,7 @@ setup (# Distribution meta-data
        description = "A low-level interface to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
-       url = "http://alexander.schmolck.org/python/code", #FIXME
+       url = "http://alexander.schmolck.org/python/code", 
        # Description of the modules and packages in the distribution
        packages = [''],
        package_dir = {'': '.'},
