@@ -9,6 +9,8 @@
 ## o keywords: matlab wrapper
 ## o license: MIT
 ## o FIXME:
+##   - it seems proxies can somehow still 'disappear', maybe in connection
+##     with exceptions in the matlab workspace?
 ##   - add test that defunct proxy-values are culled from matlab workspace
 ##     (for some reason ipython seems to keep them alive somehwere, even after
 ##     a zaphist, should find out what causes that!)
@@ -169,7 +171,7 @@ Tested under matlab v6r12 and python2.2.1 to python2.3.2
 See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 """
 __docformat__ = "restructuredtext en"
-__revision__ = "$Revision$"
+__revision__ = "$Id$"
 __version__ = "0.9b3"
 import warnings
 from pickle import PickleError
@@ -444,8 +446,8 @@ class MlabWrap(object):
 
             
     def _get_values(self, varnames):
-        res = []
         if not varnames: raise ValueError("No varnames") #to prevent clear('')
+        res = []
         for varname in varnames:
             res.append(self._get(varname))
         mlabraw.eval(self._session, "clear('%s');" % "','".join(varnames))
@@ -672,7 +674,23 @@ mlab = MlabWrap()
 # XXX fixup the `round` builtin; there might be others that could use a hand
 mlab.round = mlab._make_mlab_command('round', nout=1, doc=mlab.help('round'))
 MlabError = mlabraw.error
-__all__ = ['mlab', 'MlabWrap', 'MlabError']
+
+def saveVarsInMat(filename, varNamesStr, outOf=None, **opts):
+    """Hacky convinience function to dump a couple of python variables in a
+       .mat file. See `awmstools.saveVars`.
+    """
+    from mlabwrap import mlab
+    filename, varnames, outOf = awmstools.__saveVarsHelper(
+        filename, varNamesStr, outOf, '.mat', **opts)
+    try:
+        for varname in varnames:
+            mlab._set(varname, outOf[varname])
+        mlab._do("save('%s','%s')" % (filename, "', '".join(varnames)), nout=0)
+    finally:
+        assert varnames
+        mlab._do("clear('%s')" % "', '".join(varnames), nout=0)
+
+__all__ = ['mlab', 'saveVarsInMat', 'MlabWrap', 'MlabError']
 
 # Uncomment the following line to make the `mlab` object a library so that
 # e.g. ``from mlabwrap.mlab import plot`` will work
