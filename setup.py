@@ -85,7 +85,7 @@ MATLAB_INCLUDE_DIRS = [MATLAB_DIR + "/extern/include"] #, "/usr/include"
 DEFINE_MACROS = VERSION_6_5_OR_LATER and [('_V6_5_OR_LATER',1)] or None
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "0.9b2",
+       version = "0.9b3",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
