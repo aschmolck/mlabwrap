@@ -4,6 +4,7 @@
 
 
   - FIXME:
+    * __array__ should also lead to autoconversion
     * rename
     * add test cases (different array types and 0d arrays)
     * remove all dodgy conversion (tuples, lists, nums); 0-d is currently
@@ -29,9 +30,8 @@
      - fixed serious memory violation bug: conversion of all flat Numeric
        vectors caused illegal memory access (in the copyNumeric... routines).
      - fixed other segfaults that resulted from passing 'wrong' argument types
-       to `put` (0-d arrays (now rejected with error message), numbers (now
-       converted) and other non-array types (now should cause a warning
-       message))
+       to `put` (0-d arrays (now converted), numbers (now converted) and other
+       non-array types (now should cause a warning message))
      - removed broken autoconversion (see above)
      
    * Misc:
@@ -199,6 +199,13 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
 template <class T>
 inline void copyNumericVector2Mx(T *pSrc, int pRows, double *pDst, int *pStrides)
 {
+  // this is a horrible HACK for 0-D arrays (which have no strides);
+  // it should also work for shape (1,) 1D arrays.
+  // XXX: check that 1Ds are always OK!
+  if (pRows == 1){               
+    *pDst = *pSrc;
+    return;
+  }
   int lRowDelta = pStrides[0]/sizeof(T);
   for (int lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
     *pDst++ = *pSrc;
@@ -248,23 +255,33 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 {
   int lRows, lCols;
   bool lIsComplex;
-  bool lIsFlatVector = false;
+  bool lIsNotAMatrix = false;
   double *lR = 0;
   double *lI = 0;
   mxArray *lRetval = 0;
     
-  //XXX: removed pyassert and refiddled like so:
-  if ((pSrc->nd >= 1) && (pSrc->nd <= 2)) {
-    PyErr_SetString(PyExc_TypeError,
-                    "Only 1D or 2D arrays are currently supported");
-    goto error_return;
-  }
-  lRows = pSrc->dimensions[0];
-  if (pSrc->nd < 2) {
+  switch (pSrc->nd) {
+  case 0:                       // XXX the evil 0D
+    lRows = 1;
     lCols = 1;
-    lIsFlatVector = true;
-  } else {
+    lIsNotAMatrix = true;
+    break;
+  case 1:
+    lRows = pSrc->dimensions[0];
+    lCols = min(1, lRows); // for array([]): to avoid zeros((0,1)) !
+    lIsNotAMatrix = true;       
+    break;
+  case 2:
     lCols = pSrc->dimensions[1];
+    lRows = pSrc->dimensions[0];
+    break;
+  default:
+    char strbuff[1024];
+    sprintf(strbuff, 
+            "Only arrays with up to 2D are currently supported (not %dD)",
+            pSrc->nd);
+    PyErr_SetString(PyExc_TypeError, strbuff);
+    goto error_return;
   }
 
   switch (pSrc->descr->type_num) {
@@ -287,7 +304,7 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 
   lR = mxGetPr(lRetval);
   lI = mxGetPi(lRetval);
-  if (lIsFlatVector) {
+  if (lIsNotAMatrix) {
     switch (pSrc->descr->type_num) {
     case PyArray_CHAR:
       copyNumericVector2Mx((char *)(pSrc->data), lRows, lR, pSrc->strides);
@@ -417,7 +434,13 @@ static mxArray *numeric2mx(PyObject *pSrc)
     lDst = makeMxFromNumeric((const PyArrayObject *)pSrc);
   } else if (PySequence_Check(pSrc)) {
     lDst = makeMxFromSeq(pSrc);
-  } else if (PyInt_Check(pSrc) || PyLong_Check(pSrc) ||
+  } else if (PyObject_HasAttrString(pSrc, "__array__")) {
+    PyObject *arp;
+    arp = PyObject_CallMethod(pSrc, "__array__", NULL);
+    lDst = makeMxFromNumeric((const PyArrayObject *)arp);
+    Py_DECREF(arp);             // FIXME check this is correct;
+  } 
+    else if (PyInt_Check(pSrc) || PyLong_Check(pSrc) ||
              PyFloat_Check(pSrc) || PyComplex_Check(pSrc)){
     PyObject *t;
     t = PyTuple_New(1);
