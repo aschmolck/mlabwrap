@@ -13,7 +13,19 @@
 ##     (for some reason ipython seems to keep them alive somehwere, even after
 ##     a zaphist, should find out what causes that!)
 ##   - add tests for exception handling!
-##   - the proxy getitem/setitem only works properly for 1D arrays
+##   - the proxy getitem/setitem only works quite properly for 1D arrays
+##     (matlab's moronic syntax also means that 'foo(bar)(watz)' is not the
+##     same as 'tmp = foo(bar); tmp(watz)' -- indeed chances are the former
+##     will fail (not, apparently however with 'foo{bar}{watz}' (blech)). This
+##     would make it quite hard to the proxy thing 'properly' for nested
+##     proxies, so things may break down for complicated cases but can be
+##     easily fixed manually e.g.: ``mlab._set('tmp', foo(bar));
+##     mlab._get('tmp',remove=True)[watz]``
+##   - Guess there should be some in principle avoidable problems with
+##     assignments to sub-proxies (in addition to the more fundamental,
+##     unavoidable problem that ``proxy[index].part = foo`` can't work as
+##     expected if ``proxy[index]`` is a marshallable value that doesn't need
+##     to be proxied itself; see below for workaround).
 ## o XXX:
 ##   - better support of string 'arrays'
 ##   - multi-dimensional arrays are unsupported
@@ -163,8 +175,12 @@ import os, sys, re
 import weakref
 import atexit
 import Numeric
-try:               from tempfile import mkstemp          # python >= 2.3
-except ImportError:from tempfile import mktemp as mkstemp
+
+from tempfile import mktemp, gettempdir
+try: # python >= 2.3 has better mktemp
+    from tempfile import mkstemp as _mkstemp
+    mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
+except ImportError: pass
 
 import mlabraw
 
@@ -189,14 +205,14 @@ class MlabObjectProxy(object):
     """A proxy class for matlab objects that can't be converted to python
        types.
 
-       !!! Assigning to parts of proxy objects (e.g. ``proxy[1].foo =
+       !!! Assigning to parts of proxy objects (e.g. ``proxy[index].part =
        [[1,2,3]]``) should *largely* work as expected, the only exception
-       would be if ``proxy.foo[1] = 3`` where ``foo`` is some type that can be
-       converted to python (i.e. an array or string, (or cell, if cell
-       conversion has been enabled)), because then ``proxy.foo`` returns a new
-       python object. For these cases it's necessary to do::
+       would be if ``proxy.foo[index] = 3`` where ``proxy.foo[index]`` is some
+       type that can be converted to python (i.e. an array or string, (or
+       cell, if cell conversion has been enabled)), because then ``proxy.foo``
+       returns a new python object. For these cases it's necessary to do::
 
-         some_array[1] = 3; proxy.foo = some_array
+         some_array[index] = 3; proxy.foo = some_array
 
        """
     def __init__(self, mlabwrap, name, parent=None):
@@ -205,6 +221,7 @@ class MlabObjectProxy(object):
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
         """To fake matlab's ``obj{foo}`` style indexing."""
+        #FIXME: bizzarrely this line makes the tests fail!!!
         self.__dict__['_'] = CurlyIndexer(self)
     def __getstate__(self):
         "Experimental pickling support."
@@ -212,9 +229,7 @@ class MlabObjectProxy(object):
             raise PickleError(
                 "Only root instances of %s can currently be pickled." % \
                 type(self).__name__)
-        tmp_filename = os.path.join(
-            tempfile.gettempdir(),
-            "mlab_pickle_%s.mat" % self._mlabwrap._session)
+        tmp_filename = os.path.join(gettempdir(), "mlab_pickle_%s.mat" % self._mlabwrap._session)
         try:
             mlab.save(tmp_filename, self._name)
             mlab_contents = slurpIn(tmp_filename, binary=1)
@@ -231,7 +246,7 @@ class MlabObjectProxy(object):
         old_name = state['name']
         mlab_name = "UNPICKLED%s__" % gensym('')
         try:
-            tmp_filename = mkstemp('.mat')
+            tmp_filename = mktemp('.mat')
             spitOut(state['mlab_contents'], tmp_filename, binary=1)
             mlabraw.eval(mlab._session,
                        "TMP_UNPICKLE_STRUCT__ = load('%s', '%s');" % (
@@ -289,12 +304,12 @@ class MlabObjectProxy(object):
         elif isString(index):
             return "'%s'" % index
         elif isinstance(index, slice):
-            if index.step != None:
-                raise ValueError("Illegal index for a proxy %r" % index)
             if index == slice(None,None,None):
                 return ":"
+            elif index.step not in (None,1) or index.stop is None:
+                raise ValueError("Illegal index for a proxy %r" % index)
             else:
-                return '%d:%d' % (slice.start or 0, slice.end)
+                return '%d:%d' % ((index.start or 0) + 1, index.stop)
         else:
             raise TypeError("Unsupported index type: %r." % type(index))
     def __getitem__(self, index, parens='()'):
@@ -305,9 +320,9 @@ class MlabObjectProxy(object):
         return self._get_part("".join([self._name,parens[0],index,parens[1]]))
     def __setitem__(self, index, value, parens='()'):
         index = self._convert_index(index)
-        return self._set_part("".join([self._name,parens[0],index,parens[1]],
-                                      value))
-
+        return self._set_part("".join([self._name,parens[0],index,parens[1]]),
+                                      value)
+    
 class MlabConversionError(Exception):
     """Raised when a mlab type can't be converted to a python primitive."""
     pass
