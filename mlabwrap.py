@@ -71,7 +71,7 @@ array([[ 1.,  2.,  3.]])
 
 N.B.: The result here is a 1x3 matrix (and not a flat lenght 3 array) of type
 double (and not int), as matlab built around matrices of type double (see
-`MlabWrap._flatten_row_vecs`).
+``MlabWrap._flatten_row_vecs``).
 
 Matlab(tm)ab, unlike python has multiple value returns. To emulate calls like
 ``[a,b] = sort([3,2,1])`` just do:
@@ -118,7 +118,7 @@ Fine points and limitations
   matrix type (which also includes complex matrices), single floats and
   integer types will be cast to double. Note that row and column vectors
   can be autoconverted automatically to 1D arrays if that is desired (see
-  `_flatten_row_vecs`).
+  ``_flatten_row_vecs``).
 
 - for matlab(tm) function names like ``print`` that are reserved words in
   python, so you have to add a trailing underscore (e.g. ``mlab.print_``).
@@ -142,7 +142,7 @@ Fine points and limitations
     mlab._autosync_dirs = False
 
 - you can customize how matlab is called by setting the environment variable
-  `MLABRAW_CMD_STR`.
+  ``MLABRAW_CMD_STR``.
 
 - if you don't want to use Numeric arrays, but something else that's fine
   too::
@@ -168,11 +168,13 @@ to him for releasing his package as open source.
 
 Tested under matlab v6r12 and python2.2.1 to python2.3.2
 
-See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
+See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 """
+
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
 __version__ = "0.9b3"
+__author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
 import warnings
 from pickle import PickleError
 import operator
@@ -189,7 +191,7 @@ except ImportError: pass
 
 import mlabraw
 
-from awmstools import iupdate,slurpIn, spitOut, isString
+from awmstools import ipupdate,slurpIn, spitOut, isString
 from awmsmeta import gensym
 
 #XXX: nested access
@@ -321,7 +323,7 @@ class MlabObjectProxy(object):
             raise TypeError("Unsupported index type: %r." % type(index))
     def __getitem__(self, index, parens='()'):
         """XXX Semi-finished HACK. Matlab decadently allows overloading *2*
-           different indexing parens, '()' and '{}', hence the 'parens'
+           different indexing parens, ``()`` and ``{}``, hence the ``parens``
            option."""
         index = self._convert_index(index)
         return self._get_part("".join([self._name,parens[0],index,parens[1]]))
@@ -463,7 +465,7 @@ class MlabWrap(object):
         used in Matlab -- this also makes literal Matlab commands legal
         (eg. cmd=``get(gca, 'Children')``).
 
-        If `nout=0` is specified, the Matlab command is executed as
+        If ``nout=0`` is specified, the Matlab command is executed as
         procedure, otherwise it is executed as function (default), nout
         specifying how many values should be returned (default 1).
 
@@ -472,10 +474,10 @@ class MlabWrap(object):
         variable to a call that doesn't return a value is illegal in matlab).
         
 
-        `cast` specifies which typecast should be applied to the result
+        ``cast`` specifies which typecast should be applied to the result
         (e.g. `int`), it defaults to none.
 
-        XXX: should we add `parens` parameter?
+        XXX: should we add ``parens`` parameter?
         """
         handle_out = kwargs.get('handle_out', _flush_write_stdout)
         #self._session = self._session or mlabraw.open()
@@ -567,7 +569,7 @@ class MlabWrap(object):
 
     def _make_mlab_command(self, name, nout, doc=None):
         def mlab_command(*args, **kwargs):
-            return self._do(name, *args, **iupdate({'nout': nout}, kwargs))
+            return self._do(name, *args, **ipupdate({'nout': nout}, kwargs))
         mlab_command.__doc__ = "\n" + doc
         return mlab_command
             
@@ -677,7 +679,7 @@ MlabError = mlabraw.error
 
 def saveVarsInMat(filename, varNamesStr, outOf=None, **opts):
     """Hacky convinience function to dump a couple of python variables in a
-       .mat file. See `awmstools.saveVars`.
+       .mat file. See `awmsdev.saveVars`.
     """
     from mlabwrap import mlab
     filename, varnames, outOf = awmstools.__saveVarsHelper(

@@ -18,11 +18,14 @@ except ImportError: pass
 
 import unittest
 TestCase = unittest.TestCase
+TestSuite = unittest.TestSuite
 try: 
     import awmstest
     TestCase = awmstest.PermeableTestCase2
+    TestSuite = awmstest.RotatingTestSuite
 except ImportError: pass
 
+from awmstools import indexme
 from mlabwrap import *
 
 #XXX for testing in running session with existing mlab
@@ -37,11 +40,11 @@ def fitString(s, maxCol=79, newlineReplacement="\\n"):
         s = "%s..." % s[:maxCol-3]
     return s
 class NumericTestCase(TestCase):
-    """Simple extensio to TestCase to handle array equality tests
-       'correctly' (i.e. work around rich comparisons).
-       Since array repr's can also be very large, the printing of large reprs
-       is controlled by `maxReprLength` (None to print everything) and
-       `reprNewlineReplacement` (None not to replace newlines in the repr).
+    """Simple extensio to TestCase to handle array equality tests 'correctly'
+       (i.e. work around rich comparisons). Since array repr's can also be
+       very large, the printing of large reprs is controlled by
+       ``maxReprLength`` (None to print everything) and
+       ``reprNewlineReplacement`` (None not to replace newlines in the repr).
        """
     maxReprLength          = 30   #
     reprNewlineReplacement = "\\n"
@@ -54,7 +57,10 @@ class NumericTestCase(TestCase):
             len(res)
         except TypeError:
             return res
-        else: 
+        else:
+            # HACK
+            if len(first) == len(second) == 0:
+                return `first` == `second` # deal with empty arrays
             res = ((not testShape or Numeric.shape(first) == Numeric.shape(second)) and 
                    # it is necessary to exclude 0 element arrays, because
 
@@ -102,28 +108,41 @@ class mlabwrapTC(NumericTestCase):
     def testBasic(self):
         """Test basic behavior."""
         array = Numeric.array
-        from MLab import rand
+        from MLab import rand, randn
         from random import randrange
         "This largely tests basic mlabraw conversion functionality"
         for i in range(30):
             if i % 4: # every 4th is a flat vector
                 a = rand(randrange(1,20))
             else:
+                #FIXME add other ranks and shapes
+##                 if i % 3:
+##                     a = rand(randrange())
                 a = rand(randrange(1,3),randrange(1,3))
+            a1 = a.copy()
             mlab._set('a', a)
             if Numeric.rank(a) == 2:
                 self.assertEqual(a, mlab._get('a'))
             else:
                 self.assertEqual(a, mlab._get('a').flat)
+            self.assertEqual(a, a1)
             # make sure strides also work OK!
             mlab._set('a', a[::-2])
             if Numeric.rank(a) == 2:
                 self.assertEqual(a[::-2], mlab._get('a'))
             else:
                 self.assertEqual(a[::-2], mlab._get('a').flat)
+            self.assertEqual(a, a1)                
             if Numeric.rank(a) == 2:
                 mlab._set('a', a[0:-3:3,::-1])
                 self.assertEqual(a[0:-3:3,::-1], mlab._get('a'))
+                # test there are no aliasing problems
+                newA = mlab._get('a')
+                newA -= 1e4
+                self.assertEqual(a,a1)
+                if len(newA):
+                    self.assertNotEqual(newA, mlab._get('a'))
+            self.assertEqual(a, a1)                
             mlab.clear('a')                
             # the tricky diversity of empty arrays
             mlab._set('a', [[]])
@@ -152,8 +171,12 @@ class mlabwrapTC(NumericTestCase):
         try: # also check errormessage for above
             mlab.round()
         except MlabError, msg:
-            assert str(msg).strip() == \
-                   'Error using ==> round\nIncorrect number of inputs.'
+            pass
+            #FIXME unfortunately these messages keep changing
+##             assert str(msg).strip() == \
+##                    'Error using ==> round\nIncorrect number of inputs.'
+        else:
+            assert False
     def testDoc(self):
         """Test that docstring extraction works OK."""
         mlab.who.__doc__.index('WHO lists the variables in the current workspace')
@@ -221,14 +244,21 @@ class mlabwrapTC(NumericTestCase):
                          "    type\n    color\n    x\n\n")
         #FIXME: add tests for assigning and nesting proxies
 
-        # ensure proxies work OK as arguments
+        ## ensure proxies work OK as arguments
         self.assertEqual(mlab.size(sct), array([[1., 2.]]))
         self.assertEqual(mlab.size(sct, 1), array([[1]]))
+        # test that exceptions on calls with proxy arguments don't result in
+        # trouble
+        self.assertRaises(MlabError, mlab.svd, sct)
         self.assertEqual(mlab.size(sct, [2]), array([[2]]))
         mlab._dont_proxy['cell'] = True
         # XXX got no idea where HOME comes from, not there under win
-        assert mlab.who() in (['PROXY_VAL0__', 'PROXY_VAL1__'],
-                              ['HOME', 'PROXY_VAL0__', 'PROXY_VAL1__'])
+        theWho = mlab.who()
+        print "###DEBUG", theWho
+        # FIXME should do this differentlya
+        for boring in ['HOME', 'V', 'WLVERBOSE']:
+            theWho.remove(boring)
+        assert theWho == (['PROXY_VAL0__', 'PROXY_VAL1__'])
         # test pickling
         pickleFilename = mktemp()
         f = open(pickleFilename, 'wb')
@@ -303,7 +333,7 @@ class mlabwrapTC(NumericTestCase):
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
             
 
-suite = unittest.TestSuite(map(unittest.makeSuite,
+suite = TestSuite(map(unittest.makeSuite,
                                (mlabwrapTC,
                                 )))
 unittest.TextTestRunner().run(suite)

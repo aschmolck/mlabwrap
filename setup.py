@@ -99,7 +99,6 @@ setup (# Distribution meta-data
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
-       url = "http://alexander.schmolck.org/python/code",
        py_modules = ["mlabwrap"] + SUPPORT_MODULES,
        ext_modules = [
            Extension('mlabrawmodule', ['mlabraw.cpp'],

@@ -2,8 +2,8 @@
 mlabwrap v0.9b3
 ===============
 
-copyright (c) 2003 Alexander Schmolck (A.Schmolck@gmx.net)
-==========================================================
+:copyright: 2003,2004,2005 Alexander Schmolck
+:date: 2005-01-21
 
 .. contents:: 
 
@@ -11,8 +11,11 @@ copyright (c) 2003 Alexander Schmolck (A.Schmolck@gmx.net)
 Description
 -----------
 
-A high-level python to matlab(tm) bridge. Let's matlab look like a normal
+A high-level python to `matlab(tm)`_ bridge. Let's matlab look like a normal
 python library.
+
+.. _matlab(tm): 
+   http://www.mathworks.com
 
 License
 -------
@@ -23,7 +26,7 @@ license, see the mlabraw.cpp.
 Installation
 ------------
 
-If you're lucky (linux; matlab **v6.5** with its libraries installed and
+If you're lucky (linux; matlab **v6.5 or 7** with its libraries installed and
 **in the library path**)::
 
   python setup.py install
@@ -36,9 +39,12 @@ importing, see Troubleshooting.
 
 Documentation
 -------------
-- for lazy people:
+- for lazy people
   
-  >>> from mlabwrap import mlab; mlab.plot([1,2,3])
+  >>> from mlabwrap import mlab; mlab.plot([1,2,3],'-o')
+
+  .. image:: ugly-plot.png
+     :alt: ugly-plot
 
 - for a complete description:
   see the doc_ dir or just run ``pydoc mlabwrap``
@@ -56,7 +62,7 @@ Tutorial
 
 Legend: [...] = omitted output
 
-Let's say you want to do use matlab to calculate the singular value
+Let's say you want to do use matlab(tm) to calculate the singular value
 decomposition of a matrix.  So first you import the `mlab` pseudo-module and
 Numeric:
 
@@ -199,13 +205,16 @@ fails.
 What's Missing?
 ---------------
 
-- Untested under matlab 6.5 (which has seen an C-level interface change).
 - Handling of as arrays of (array) rank 3 or more as well as
   non-double/complex arrays (currently everything is converted to
   double/complex for passing to matlab and passing non-double/complex from
   matlab is not not supported). Both should be reasonably easy to implement,
   but I currently don't need them.
 - Better support for cells.
+- support from numarray (if you also have Numeric you could see whether
+  mlab._array_cast suffices; otherwise with the compatibility layer it should
+  hopefully be easy to create a numarray version, but I currently haven't got
+  the time nor the need)
 
 
 Implemenation Notes
@@ -274,9 +283,24 @@ running linux and that the libraries are in
 3. Or, ugly but also works: just copy or symlink all the libraries to
    ``/usr/lib`` or something else that's in your library path.
 
+Download
+--------
+
+<http://sourceforge.net/projects/mlabwrap/>
+
 
 Credits
 -------
 
-Andrew Sterian for writing pymat without this module would never have existed.
+Andrew Sterian for writing pymat without which this module would never have
+existed.
+
+Matlab is a registered trademark of `The Mathworks`_.
+
+.. _The Mathworks: 
+   http://www.mathworks.com
+
+.. image:: http://sourceforge.net/sflogo.php?group_id=124293&amp;type=5
+   :alt: sourceforge-logo
+   :target: http://sourceforge.net/projects/mlabwrap/
 
