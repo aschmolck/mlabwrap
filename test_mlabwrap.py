@@ -88,13 +88,13 @@ class mlabwrapTC(TestCase):
         _proxies 
         _proxy_count 
         _mlabraw_can_convert 
-        _optionally_convert""".split():
+        _dont_proxy""".split():
            self.backup[opt] = mlab.__dict__[opt]
     def tearDown(self):
         """Reset options."""
         mlab.__dict__.update(self.backup)
     def testCallArgs(self):
-        mlab._optionally_convert['cell'] = True
+        mlab._dont_proxy['cell'] = True
         try:
             mlab._clear_call_args = False
             mlab.sin(1.23)
@@ -104,7 +104,7 @@ class mlabwrapTC(TestCase):
             assert not 'arg0__' in mlab.who()
         finally:
             mlab._clear_call_args = True            
-            mlab._optionally_convert['cell'] = False
+            mlab._dont_proxy['cell'] = False
     def testSubtler(self):
         """test more subtle stuff"""
         import Numeric
@@ -125,10 +125,10 @@ class mlabwrapTC(TestCase):
         assert mlab._get('foo') == Numeric.array([1.])
         assert not mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
                ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
-        mlab._optionally_convert['cell'] = True
+        mlab._dont_proxy['cell'] = True
         assert mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
                ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
-        mlab._optionally_convert['cell'] = False
+        mlab._dont_proxy['cell'] = False
         mlab.clear('foo')
         self.assertRaises(MlabError, mlab._get, 'foo')
         assert `sct` == ("<MlabObjectProxy of matlab-class: 'struct'; "
@@ -136,7 +136,7 @@ class mlabwrapTC(TestCase):
                          "1x2 struct array with fields:\n"
                          "    type\n    color\n    x\n\n")
         #FIXME: add tests for assigning and nesting proxies
-        mlab._optionally_convert['cell'] = True
+        mlab._dont_proxy['cell'] = True
         # XXX got no idea where HOME comes from, not there under win
         assert mlab.who() in (['PROXY_VAL0__', 'PROXY_VAL1__'],
                               ['HOME', 'PROXY_VAL0__', 'PROXY_VAL1__'])
@@ -164,7 +164,7 @@ class mlabwrapTC(TestCase):
         x = []
         mlab._do("disp 'hallo'" ,nout=0, handle_out=x.append)
         assert x[0] == 'hallo\n'
-        mlab._optionally_convert['cell'] = False
+        mlab._dont_proxy['cell'] = False
 
 suite = unittest.TestSuite(map(unittest.makeSuite,
                                (mlabwrapTC,
@@ -174,7 +174,9 @@ unittest.TextTestRunner().run(suite)
 #FIXME strangely enough we can't test this in the function!
 import gc
 gc.collect()
-mlab._optionally_convert['cell'] = True
+mlab._dont_proxy['cell'] = True
 # XXX got no idea where HOME comes from, not there under win
 assert mlab.who() in (['HOME', 'bar'], ['bar'])
-mlab._optionally_convert['cell'] = False
+mlab.clear()
+assert mlab.who() == [] == mlab._do('{}')
+mlab._dont_proxy['cell'] = False

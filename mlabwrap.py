@@ -9,19 +9,17 @@
 ## o keywords: matlab wrapper
 ## o license: MIT
 ## o FIXME:
-##   - `_dont_proxy` and `_manually_convert` sound similar but are
-##     quite different so think of better names
 ##   - add test that defunct proxy-values are culled from matlab workspace
 ##     (for some reason ipython seems to keep them alive somehwere, even after
 ##     a zaphist, should find out what causes that!)
 ##   - add tests for exception handling!
 ##   - the proxy getitem/setitem only works properly for 1D arrays
-##   - multi-dimensional arrays are unsupported
-##   - convert testing to doctest
 ## o XXX:
+##   - better support of string 'arrays'
+##   - multi-dimensional arrays are unsupported
 ##   - treatment of lists, tuples and arrays with non-numerical values (these
 ##     should presumably be wrapped into wrapper classes MlabCell etc.)
-##   - should test classes and further improve struct support
+##   - should test classes and further improve struct support?
 ##   - should we transform 1D vectors into row vectors when handing them to
 ##     matlab?
 ##   - what should be flattend? Should there be a scalarization opition?
@@ -159,23 +157,20 @@ __docformat__ = "restructuredtext en"
 __revision__ = "$Revision$"
 __version__ = "0.9b1"
 
-# perform black magic
-
-
-from __future__ import generators
 import tempfile
 from pickle import PickleError
 import operator
 import os, sys, re
-import Numeric
-import mlabraw
 import weakref
 import atexit
+import Numeric
 
-from awmstools import DEBUG_P, iupdate, magicGlobals, slurpIn, spitOut, prin
+import mlabraw
+
+from awmstools import iupdate,slurpIn, spitOut
 from awmsmeta import gensym
-#XXX: nested access
 
+#XXX: nested access
 def _flush_write_stdout(s):
     """Writes `s` to stdout and flushes. Default value for ``handle_out``."""
     sys.stdout.write(s); sys.stdout.flush()
@@ -240,10 +235,9 @@ class MlabObjectProxy(object):
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
         
     def __repr__(self):
-        # HACK
         output = []
         mlab._do('disp(%s)' % self._name, nout=0, handle_out=output.append)
-        rep = output[0]
+        rep = "".join(output)
         klass = self._mlabwrap._do("class(%s)" % self._name)
 ##         #XXX what about classes?
 ##         if klass == "struct":
@@ -633,4 +627,7 @@ mlab.round = mlab._make_mlab_command('round', nout=1, doc=mlab.help('round'))
 MlabError = mlabraw.error
 __all__ = ['mlab', 'MlabWrap', 'MlabError']
 
-#FIXME if not sys.modules.get('mlabwrap.mlab'): sys.modules['mlabwrap.mlab'] = mlab
+# Uncomment the following line to make the `mlab` object a library so that
+# e.g. ``from mlabwrap.mlab import plot`` will work
+
+## if not sys.modules.get('mlabwrap.mlab'): sys.modules['mlabwrap.mlab'] = mlab

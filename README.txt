@@ -238,6 +238,23 @@ source.
 
 Troubleshooting
 ---------------
+
+Old Matlab version
+''''''''''''''''''
+If you get something like this on ``python setup.py install``::
+
+ mlabraw.cpp:634: `engGetVariable' undeclared (first use this function)
+
+Then you're presumably using an old version of matlab (i.e. < 6.5), so you'll
+have to edit ``setup.py`` and change ``VERSION_6_5_OR_LATER=1`` to
+``VERSION_6_5_OR_LATER=0``.
+
+
+VERSION_6_5_OR_LATER=1
+
+Library path not set
+''''''''''''''''''''
+
 If on importing mlabwrap you get somthing like this::
 
  ImportError: libeng.so: cannot open shared object file: No such file or directory
