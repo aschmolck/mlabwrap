@@ -31,7 +31,7 @@
 ##   - ``class('func')`` but ``class(var)``
 
 """A wrapper for matlab, giving almost transparent access to matlab, including
-online help.
+online help and experimental pickling support.
 
 More precisely, a wrapper around a wrapper:  Andrew Sterian's pymat
 (http://claymore.engineer.gvsu.edu/~steriana/Python/pymat.html)
@@ -61,13 +61,16 @@ See the docu of `MLabDirect`.
 __version__ = "$Revision$"
 
 from __future__ import generators
+import tempfile
+from pickle import PickleError
 import os, sys, re
 import Numeric
 import pymat
 import weakref
+import atexit
 
 # the following lines are just there for standaloness and downwards-compat.
-from awmstools import DEBUG_P, iupdate
+from awmstools import DEBUG_P, iupdate, magicGlobals, slurpIn, spitOut
 from awmsmeta import gensym
 DEBUG = 0
 #FIXME: nested access
@@ -79,6 +82,45 @@ class MLabObjectProxy(object):
         self.__dict__['_name'] = name
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
+
+    def __getstate__(self):
+        "Experimental pickling support."
+        if self.__dict__['_parent']:
+            raise PickleError(
+                "Only root instances of %s can currently be pickled." % \
+                type(self).__name__)
+        tmp_filename = os.path.join(
+            tempfile.gettempdir(),
+            "mlab_pickle_%s.mat" % self._mlab_direct._session)
+        try:
+            mlab.save(tmp_filename, self._name)
+            mlab_contents = slurpIn(tmp_filename, binary=1)
+        finally:
+            if os.path.exists(tmp_filename): os.remove(tmp_filename)
+
+        return {'mlab_contents' : mlab_contents,
+                'name': self._name}
+        
+        
+    def __setstate__(self, state):
+        "Experimental unpickling support."
+        global mlab         #FIXME: make this class var
+        old_name = state['name']
+        mlab_name = "UNPICKLED%s__" % gensym('')
+        try:
+            tmp_filename = tempfile.mktemp('.mat')
+            spitOut(state['mlab_contents'], tmp_filename, binary=1)
+            pymat.eval(mlab._session,
+                       "TMP_UNPICKLE_STRUCT__ = load('%s', '%s')" % (
+                tmp_filename, old_name))
+            pymat.eval(mlab._session,
+                       "%s = TMP_UNPICKLE_STRUCT__.%s" % (mlab_name, old_name))
+            pymat.eval(mlab._session, "clear TMP_UNPICKLE_STRUCT__")
+            mlab._make_proxy(mlab_name, lambda *args: self.__init__(*args) or self)
+            pymat.eval(mlab._session, 'clear %s' % mlab_name)
+        finally:
+            if os.path.exists(tmp_filename): os.remove(tmp_filename)
+        
     def __repr__(self):
         klass = self._mlab_direct._do("class(%s)" % self._name)
         #FIXME what about classes?
@@ -131,7 +173,7 @@ class MLabDirect(object):
     """This implements a powerful and simple to use wrapper that makes using
     matlab(tm) from python almost completely transparent. To use simply do:
     
-    >>> mlab = MLabDirect()
+    >>> from mlab_direct import mlab
 
     and then just use whatever matlab command you like as follows:
     
@@ -162,22 +204,20 @@ class MLabDirect(object):
     handles what you want.
     """
     
-    def __init__(self, array_cast=None, autosync_dirs=True):
-        """Create a new matlab(tm) wrapper object with its own session.
-
-        :Paramters:
-
-        - `array_cast` specifies a cast for arrays. If the result of an
-          operation is a Numeric array, ``return_type(res)`` will be returned
-          instead.
-        
-        - `autosync_dirs` specifies whether the working directory of the
-          matlab session should be kept in sync with that of python.
+    def __init__(self):
+        """Create a new matlab(tm) wrapper object.
         """
-        self.array_cast = array_cast
-        self.flatten_row_vecs = True
-        self.flatten_col_vecs = False
-        self.autosync_dirs = autosync_dirs
+        self._array_cast  =None
+        """specifies a cast for arrays. If the result of an
+        operation is a Numeric array, ``return_type(res)`` will be returned
+        instead."""
+        self._autosync_dirs=True
+        """`autosync_dirs` specifies whether the working directory of the
+        matlab session should be kept in sync with that of python."""
+        self._flatten_row_vecs = True
+        self._flatten_col_vecs = False
+        global _session
+        print "###DEBUG opening session (from:%s)" % magicGlobals()['__name__']
         self._session = pymat.open()
         self._command_cache = {}
         self._proxies = weakref.WeakValueDictionary()
@@ -205,7 +245,8 @@ class MLabDirect(object):
         res_type = pymat.get(self._session, "TMP_CLS__")
         pymat.eval(self._session, "clear TMP_CLS__")
         return res_type
-    def _make_proxy(self, varname):
+    
+    def _make_proxy(self, varname, constructor=MLabObjectProxy):
         """Creates a proxy for a variable.
 
         XXX create and cache nested proxies also here.
@@ -213,7 +254,7 @@ class MLabDirect(object):
         proxy_val_name = "PROXY_VAL%d__" % self._proxy_count
         self._proxy_count += 1
         pymat.eval(self._session, "%s = %s" % (proxy_val_name, varname))
-        res = MLabObjectProxy(self, proxy_val_name)
+        res = constructor(self, proxy_val_name)
         self._proxies[proxy_val_name] = res
         return res
 
@@ -230,7 +271,7 @@ class MLabDirect(object):
             except AttributeError:
                 raise TypeError("Unsuitable argument type: %s" % type(arg))
     def _get_cell(self, varname):
-        # make sure it's 1D
+        # XXX make sure it's 1D
         pymat.eval(self._session,
                    "TMP_SIZE_INFO__ = \
                    [min(size(%(vn)s)) == 1 & ndims(%(vn)s) == 2, \
@@ -255,13 +296,13 @@ class MLabDirect(object):
             if vartype in self._can_convert:
                 var = pymat.get(self._session, varname)
                 if type(var) is Numeric.ArrayType:
-                    if self.flatten_row_vecs and Numeric.shape(var)[0] == 1:
+                    if self._flatten_row_vecs and Numeric.shape(var)[0] == 1:
                         DEBUG_P("", (("Numeric.shape(var)", Numeric.shape(var)),))
                         var.shape = var.shape[1:2]
-                    elif self.flatten_col_vecs and Numeric.shape(var)[1] == 1:
+                    elif self._flatten_col_vecs and Numeric.shape(var)[1] == 1:
                         var.shape = var.shape[0:1]
-                    if self.array_cast:
-                        var = self.array_cast(var)
+                    if self._array_cast:
+                        var = self._array_cast(var)
             else:
                 var = None
                 if vartype == 'cell':
@@ -299,7 +340,7 @@ class MLabDirect(object):
         DEBUG_P("", (("cmd", cmd), ("args", args), ("kwargs", kwargs),))
         #self._session = self._session or pymat.open()
         # HACK        
-        if self.autosync_dirs:
+        if self._autosync_dirs:
             pymat.eval(self._session,  'cd %s' % os.getcwd())
         nout =  kwargs.get('nout', 1)
         DEBUG_P("", (("nout", nout),))
@@ -357,8 +398,8 @@ class MLabDirect(object):
     def __getattr__(self, attr):
         """Magically creates a wapper to a matlab function, procedure or
         object on-the-fly."""
-        # print_ -> print        
-        if attr[-1] == "_": attr = attr[:-1]        
+        # print_ -> print
+        if attr[-1] == "_": attr = attr[:-1]
         if self._command_cache.has_key(attr):
             return self._command_cache[attr]
         typ = self._do("exist('%s')" % attr)
@@ -444,13 +485,32 @@ class MLabDirect(object):
         self._command_cache[attr] = mlab_command
         return mlab_command
         
-#mlab = MLabDirect()
-DEBUG = 1
-__all__ = MLabDirect
+mlab = MLabDirect()
+__all__ = mlab, MLabDirect
+
+                 
+import Numeric
+from MLab import rand
+from random import randrange
+def _test_sanity():
+    for i in range(30):
+        a = rand(randrange(1,20),randrange(1,20))
+        mlab._set('a', a)
+        try:
+            mlab_a = mlab._get('a')
+            mlab.clear('a')                
+            assert Numeric.alltrue(a.flat == mlab_a.flat)
+        except AssertionError:
+            print "A:\n%s\nB:\n%s|n" % (a, mlab._get('a'))
+            raise
+#XXX just to be sure        
+_test_sanity()
+    
+DEBUG = 0
 if __name__ == "__main__":
-    from Numeric import array
-    DEBUG = 0
-    mlab = MLabDirect()
+    from awmstools import saveVars, loadVars
+    array = Numeric.array
+    _test_sanity()
     assert mlab.sort(1) == Numeric.array([1.])
     assert mlab.sort([3,1,2]) == Numeric.array([1., 2., 3.])
     assert mlab.sort(Numeric.array([3,1,2])) == Numeric.array([1., 2., 3.])
@@ -472,8 +532,22 @@ if __name__ == "__main__":
     print sct
     print `bct`
     #FIXME: add tests for assigning and nesting proxies
+    help(mlab.who)
     assert mlab.who() == ['HOME', 'PROXY_VAL0__', 'PROXY_VAL1__']
+    print "TESTING PICKLING"
+    saveVars('/tmp/saveVars', 'sct bct')
+    namespace = {}
+    loadVars('/tmp/saveVars', 'sct bct', namespace)
+    assert len(mlab._proxies) == 4
+    print namespace['sct']
+    assert namespace['sct'][1].x == 'New Value'
+    namespace['sct'][1].x = 'Even Newer Value'
+    assert namespace['sct'][1].x ==  'Even Newer Value'
+    assert sct[1].x == 'New Value'
     del sct
     del bct
+    del namespace['sct']
+    del namespace['bct']
     mlab._set('bar', '1234')
     assert mlab.who() == ['HOME', 'bar']
+    
