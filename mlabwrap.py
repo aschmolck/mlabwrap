@@ -7,21 +7,31 @@
 ## o last modified: $Date$
 ## o keywords: matlab wrapper
 ## o license: LGPL
+## o FIMXE:
+##   - the proxy getitem/setitem only works properly for 1D arrays
+## o XXX:
+##   - best treatment of lists, tuples obj-arrays?
+##   - clean-up what is proxied and what isn't and make choices optional
+##   - find out about classes and improve struct support
+##   - multi-dimensional arrays
+##   - should we transform 1D vectors into row vectors when handing them to
+##     matlab?
+##   - what should be flattend? Should there be a scalarization opition?
+##   - nested proxies should be cached and identical.
+##   - autosync_dirs is a bit of a hack...
 ## o TODO:
+##   - delattr
+##   - better error reporting: test for number of input args etc.
+##   - add cloning of proxies.
+##   - more tests
 ##   - is there a way to get ``display(x)`` as a string (apart from using
 ##     diary?)
-## o XXX:
-##   - nested proxies should be cached.
-##   - better error reporting: test for number of input args etc.
-##   - allow switching between Numeric arrays an my wonderful matrix class
-##   - autosync_dirs is a bit of a hack...
-##   - pymat unhelpfully returns array([0.]) for empty 0x1 arrays
-##     (e.g. zeros(0,1))!!!  (should we try to do a workaround for this?)
 ## o !!!:
 ##   - matlab complex arrays are intelligently of type 'double'
 ##   - ``class('func')`` but ``class(var)``
 
-"""A wrapper for matlab, giving almost transparent access to matlab.
+"""A wrapper for matlab, giving almost transparent access to matlab, including
+online help.
 
 More precisely, a wrapper around a wrapper:  Andrew Sterian's pymat
 (http://claymore.engineer.gvsu.edu/~steriana/Python/pymat.html)
@@ -36,11 +46,11 @@ Limitations
     - There isn't good error handling, because the underlying pymat doesn't
       have good error handling either.
       
-    - Matlab doesn't know scalars, so array([1]) and [1] are the same.
-      Consequently all functions where on might expect a scalar to be returned
-      will return a 1x1 array instead. However, unlike in pymat (where they
-      cause segfaults), scalars are automatically converted to arrays where
-      necessary.
+    - Matlab doesn't know scalars, or 1D arrays. Consequently all functions
+      where on might expect a scalar or 1D array to be returned will return a
+      1x1 array instead. Also, because matlab is built around the 'double'
+      matrix type (which also includes complex matrices), other types will
+      most likely be cast to double (XXX).
 
 Tested under matlab v6r12 and python2.2.1, but should also work for earlier
 versions.
@@ -50,6 +60,7 @@ See the docu of `MLabDirect`.
 
 __version__ = "$Revision$"
 
+from __future__ import generators
 import os, sys, re
 import Numeric
 import pymat
@@ -69,22 +80,31 @@ class MLabObjectProxy(object):
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
     def __repr__(self):
-        return "<%s of matlab-class: %r; internal name: %r; has parent: %s>" % (
-            type(self).__name__, self._mlab_direct._do("class(%s)" % self._name),
-            self._name, ['no', 'yes'][bool(self._parent)])
+        klass = self._mlab_direct._do("class(%s)" % self._name)
+        #FIXME what about classes?
+        if klass == "struct":
+            rep = "\n" + self._mlab_direct._format_struct(self._name)
+        else:
+            rep = ""
+        return "<%s of matlab-class: %r; internal name: %r; has parent: %s>%s" % (
+            type(self).__name__, klass,
+            self._name, ['no', 'yes'][bool(self._parent)],
+            rep)
             #AARGH there seems to be no sane way to 'display' to a string...
             #self._mlab_direct._do("display(%s)" % self._name))
     def __del__(self):
         if not self._parent:
             pymat.eval(self._mlab_direct._session, 'clear %s' % self._name)
     def _get_part(self, to_get):
-        if self._mlab_direct._can_convert(to_get):
+        #FIXME cells etc. needs refactoring
+        pymat.eval(self._mlab_direct._session, "TMP_VAL__=%s" % to_get)
+        if self._mlab_direct._var_type(to_get) in self._mlab_direct._can_convert:
             DEBUG_P("getting", (("to_get", to_get),))
-            pymat.eval(self._mlab_direct._session, "TMP_VAL__=%s" % to_get)
             return self._mlab_direct._get("TMP_VAL__", remove=True)
         else:
             return type(self)(self._mlab_direct, to_get, self)
     def _set_part(self, to_set, value):
+        #FIXME s.a.
         if isinstance(value, MLabObjectProxy):
             pymat.eval(self._mlab_direct._session, "%s = %s" % (to_set, value._name))
         else:
@@ -96,6 +116,7 @@ class MLabObjectProxy(object):
         return self._get_part("%s.%s" % (self._name, attr))
     def __setattr__(self, attr, value):
         self._set_part("%s.%s" % (self._name, attr), value)
+    #FIXME: those two only works ok for vectors
     def __getitem__(self, index):
         if not type(index) is int:
             raise TypeError("Currently only integer indices are supported.")
@@ -130,13 +151,18 @@ class MLabDirect(object):
     For names that are reserved in python (like print) do:
 
     >>> mlab.print_()
+
+    You can look at the documentation of a matlab function just by using help,
+    as usual:
+
+    >>> help(mlab.sort)
     
     In almost all cases that should be enough -- if you need to do trickier
     things, then get raw with ``mlab._do``, or build your child class that
     handles what you want.
     """
     
-    def __init__(self, array_cast=None, autosync_dirs=1):
+    def __init__(self, array_cast=None, autosync_dirs=True):
         """Create a new matlab(tm) wrapper object with its own session.
 
         :Paramters:
@@ -148,30 +174,44 @@ class MLabDirect(object):
         - `autosync_dirs` specifies whether the working directory of the
           matlab session should be kept in sync with that of python.
         """
-        self.array_cast = array_cast        
+        self.array_cast = array_cast
+        self.flatten_row_vecs = True
+        self.flatten_col_vecs = False
         self.autosync_dirs = autosync_dirs
         self._session = pymat.open()
         self._command_cache = {}
         self._proxies = weakref.WeakValueDictionary()
-        self._permanent_names = []
-        self._convertable = ('double', 'char')
+        self._proxy_count = 0
+        self._can_convert = ('double', 'char')
         
     def __del__(self):
         pymat.close(self._session)
-    def _can_convert(self, varname):
+    def _format_struct(self, varname):
+        res = []
+        fieldnames = self._do("fieldnames(%s)" % varname)
+        size       = self._do("size(%s)" % varname).flat
+        return "%dx%d struct array with fields:\n%s" % (
+            size[0], size[1], "\n   ".join([""] + fieldnames))
+##         fieldnames
+##         fieldvalues = self._do(",".join(["%s.%s" % (varname, fn)
+##                                          for fn in fieldnames]), nout=len(fieldnames))
+##         maxlen = max(map(len, fieldnames))
+##         return "\n".join(["%*s: %s" % (maxlen, (`fv`,`fv`[:20] + '...')[len(`fv`) > 23])
+##                                        for fv in fieldvalues])
+        
+    def _var_type(self, varname):
         DEBUG_P("", (("varname", varname),))
         pymat.eval(self._session, "TMP_CLS__ = class(%s)" % varname) #FIXME for funcs we would need ''s
         res_type = pymat.get(self._session, "TMP_CLS__")
         pymat.eval(self._session, "clear TMP_CLS__")
-        # we only now how to deal with double (includes complex) matrices and
-        # strings
-        return res_type in self._convertable
+        return res_type
     def _make_proxy(self, varname):
         """Creates a proxy for a variable.
 
         XXX create and cache nested proxies also here.
         """
-        proxy_val_name = "PROXY_VAL%d__" % len(self._proxies)
+        proxy_val_name = "PROXY_VAL%d__" % self._proxy_count
+        self._proxy_count += 1
         pymat.eval(self._session, "%s = %s" % (proxy_val_name, varname))
         res = MLabObjectProxy(self, proxy_val_name)
         self._proxies[proxy_val_name] = res
@@ -185,7 +225,58 @@ class MLabDirect(object):
         if isinstance(arg, (Numeric.ArrayType, list, tuple, str)):
             return arg
         else:
-            raise TypeError("Unsuitable argument type: %s" % type(arg))
+            try:
+                return arg.__array__()
+            except AttributeError:
+                raise TypeError("Unsuitable argument type: %s" % type(arg))
+    def _get_cell(self, varname):
+        # make sure it's 1D
+        pymat.eval(self._session,
+                   "TMP_SIZE_INFO__ = \
+                   [min(size(%(vn)s)) == 1 & ndims(%(vn)s) == 2, \
+                   max(size(%(vn)s))] " % {'vn':varname})
+        is_rank1, cell_len = self._get("TMP_SIZE_INFO__", remove=True).flat
+        if is_rank1:
+            cell_bits = (["TMP%i%s__" % (i, gensym('_'))
+                           for i in range(cell_len)])
+            pymat.eval(self._session, '[%s] = deal(%s{:})' %
+                       (",".join(cell_bits), varname))
+            # !!! this recursive call means we have to take care with
+            # overwriting temps!!!
+            DEBUG_P("", (("cell_bits", cell_bits), ("varname", varname),))
+            return self._get_values(cell_bits)
+        else: return None #FIXME #raise ValueError("Not a 1D cell array")
+        
+    def _get_values(self, varnames):
+        res = []
+        if not varnames: raise ValueError("No varnames") #to prevent clear('')
+        for varname in varnames:
+            vartype = self._var_type(varname)
+            if vartype in self._can_convert:
+                var = pymat.get(self._session, varname)
+                if type(var) is Numeric.ArrayType:
+                    if self.flatten_row_vecs and Numeric.shape(var)[0] == 1:
+                        DEBUG_P("", (("Numeric.shape(var)", Numeric.shape(var)),))
+                        var.shape = var.shape[1:2]
+                    elif self.flatten_col_vecs and Numeric.shape(var)[1] == 1:
+                        var.shape = var.shape[0:1]
+                    if self.array_cast:
+                        var = self.array_cast(var)
+            else:
+                var = None
+                if vartype == 'cell':
+                    var = self._get_cell(varname)
+                    DEBUG_P("got a cell?", (("var", var), ("varname", varname),))
+                if not var:
+                    # we can't convert this to a python object, so we just
+                    # create a proxy, and don't delete the real matlab
+                    # reference until the proxy is garbage collected
+                    DEBUG_P("funny res", ())
+                    var = self._make_proxy(varname)
+            res.append(var)
+        pymat.eval(self._session, "clear('%s')" % "','".join(varnames))
+        return res
+    
     def _do(self, cmd, *args, **kwargs):
         """Semi-raw execution of a matlab command.
         
@@ -206,7 +297,7 @@ class MLabDirect(object):
         XXX: should we add `parens` parameter?
         """
         DEBUG_P("", (("cmd", cmd), ("args", args), ("kwargs", kwargs),))
-        self._session = self._session or pymat.open()
+        #self._session = self._session or pymat.open()
         # HACK        
         if self.autosync_dirs:
             pymat.eval(self._session,  'cd %s' % os.getcwd())
@@ -215,14 +306,14 @@ class MLabDirect(object):
         argnames = []
         for arg, count in zip(args, xrange(sys.maxint)):
             if isinstance(arg, MLabObjectProxy):
-                argnames.append(MLabObjectProxy._name)
+                argnames.append(arg._name)
             else:
                 argnames.append('arg%d__' % count)
                 # have to convert these by hand
                 try:
                     arg = self._as_mlabable_type(arg)
                 except TypeError:
-                    raise TypeError("Illegal argument type (%s) for %d. argument" %
+                    raise TypeError("Illegal argument type (%s.:) for %d. argument" %
                                     (type(arg), type(count)))
                 pymat.put(self._session,  argnames[-1], arg)
 
@@ -239,37 +330,16 @@ class MLabDirect(object):
         resSL = ((["RES%d__" % i for i in range(nout)]))
         DEBUG_P("", (("resSL", resSL), ("cmd", cmd),))
         pymat.eval(self._session, '[%s]=%s' % (", ".join(resSL), cmd))
-        res = []
-        for resS in resSL:
-            #FIXME: this should be fixed in the c++ sources
-##             HACK zeros(0,1) etc. incorrectly returns array([1.])
-##             pymat.eval(self._session, "TMP__ = isempty(%s)" % resSL):
-##             if pymat.get("TMP__")[0]:
-##                 res.append(pymat...
-##             pymat.eval(self._session, "clear('TMP__')")
-            DEBUG_P("determining res type", ())
-            if self._can_convert(resS):
-                resPart = pymat.get(self._session, resS)
-                if self.array_cast and type(resPart) is Numeric.ArrayType:
-                    resPart = self.array_cast(resPart)
-            # we can't convert this to a python object, so we just create
-            # a proxy, and don't delete the real matlab reference until
-            # the proxy is garbage collected
-            else:
-                DEBUG_P("funny res", ())
-                resPart = self._make_proxy(resS)
-            res.append(resPart)
-        # XXX: if we have a very large number of results, this might cause
-        # a problem.
-        pymat.eval(self._session, "clear('%s')" % "','".join(resSL))
+        res = self._get_values(resSL)
+        
         if nout == 1: res = res[0]
         else:         res = tuple(res)
-        pymat.eval(self._session, "clear('%s')" % "', '".join(argnames))
         if kwargs.has_key('cast'):
             if nout == 0: raise TypeError("Can't cast: 0 nout")
             return kwargs['cast'](res)
         else:
             return res
+    # this is really raw, no conversion of [[]] -> [], whatever
     def _get(self, name, remove=False):
         res = pymat.get(self._session, name)
         if remove:
@@ -375,15 +445,35 @@ class MLabDirect(object):
         return mlab_command
         
 #mlab = MLabDirect()
+DEBUG = 1
 __all__ = MLabDirect
 if __name__ == "__main__":
-    #DEBUG = 1
+    from Numeric import array
+    DEBUG = 0
     mlab = MLabDirect()
     assert mlab.sort(1) == Numeric.array([1.])
     assert mlab.sort([3,1,2]) == Numeric.array([1., 2., 3.])
     assert mlab.sort(Numeric.array([3,1,2])) == Numeric.array([1., 2., 3.])
     sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
+    bct = mlab._do("struct('type',{'BIG','little'},'color','red')")
     print sct
     assert sct[1].x == 4
-    sct[1].x  = 3
-    assert sct[1].x == 3
+    sct[1].x  = 'New Value'
+    assert sct[1].x == 'New Value'
+    assert bct[0].type == 'BIG' and sct[0].type == 'big'
+    mlab._set('foo', 1)
+    assert mlab._get('foo') == Numeric.array([1.])
+    assert mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
+           ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
+    mlab.clear('foo')
+    try:
+        print mlab._get('foo')
+    except: print "deletion worked"
+    print sct
+    print `bct`
+    #FIXME: add tests for assigning and nesting proxies
+    assert mlab.who() == ['HOME', 'PROXY_VAL0__', 'PROXY_VAL1__']
+    del sct
+    del bct
+    mlab._set('bar', '1234')
+    assert mlab.who() == ['HOME', 'bar']
