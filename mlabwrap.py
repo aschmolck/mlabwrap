@@ -124,6 +124,17 @@ Fine points and limitations
 
     mlab._autosync_dirs = False
 
+- if you don't want to use Numeric arrays, but something else that's fine
+  too::
+
+    >>> import Matrix
+    >>> mlab._array_cast = Matrix.Matrix
+    >>> mlab.sqrt([[4.], [1.], [0.]])
+    Matrix([[ 2.],
+            [ 1.],
+            [ 0.]])
+
+  (<plug>of course nummat.matrix is a superior choice...</plug>)
 
 Credits
 -------
@@ -135,12 +146,13 @@ to him for releasing his package as open source.
 
 
 
-Tested under matlab v6r12 and python2.2.1.
+Tested under matlab v6r12 and python2.2.1
 
 See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 """
 
-__version__ = "$Revision$"
+__revision__ = "$Revision$"
+__version__ = "0.9b1"
 
 # perform black magic
 
@@ -498,6 +510,11 @@ class MlabWrap(object):
         if attr[-1] == "_": name = attr[:-1]
         else              : name = attr
         typ = self._do("exist('%s')" % name)
+        # make sure we get an int out of this (mainly for `Matrix`)
+        try:
+            typ = int(typ)              # only works if autoconverted to 0d
+        except TypeError:
+            typ = Numeric.ravel(typ)[0]
         doc = self._do("help('%s')" % name)
         if   typ == 0: # doesn't exist
             raise AttributeError("No such matlab object: %s" % name)
