@@ -11,7 +11,7 @@
   Revision History
   ================
 
-  mlabraw version 0.9b -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
+  mlabraw version 0.9b1 -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
   --------------------------------------------------------------------------
   A modified, bugfixed and renamed version of pymat.
    
@@ -69,7 +69,7 @@
 
 */
 
-#define MLABRAW_VERSION "0.9b"
+#define MLABRAW_VERSION "0.9b1"
 
 // We're not building a MEX file, we're building a standalone app.
 #undef MATLAB_MEX_FILE
