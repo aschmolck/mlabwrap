@@ -1,9 +1,16 @@
-==========================================================================
-mlabwrap v0.9b1 copyright (c) 2003 Alexander Schmolck (A.Schmolck@gmx.net)
-==========================================================================
+===============
+mlabwrap v0.9b1
+===============
+
+copyright (c) 2003 Alexander Schmolck (A.Schmolck@gmx.net)
+==========================================================
+
+.. contents:: 
+
 
 Description
 -----------
+
 A high-level python to matlab(tm) bridge. Let's matlab look like a normal
 python library.
 
@@ -16,17 +23,19 @@ license, see the mlabraw.cpp.
 Installation
 ------------
 
-If you're lucky (linux; matlab and its libraries installed where suspected
-etc.):
+If you're lucky (linux; matlab with its libraries installed and **in the
+library path**):
 
   python setup.py install
 
 If not, you'll have to edit setup.py (if that's the case ,please share your
-improvements with me if).
+improvements with me if). If the install proceeds but you get errors on
+importing, see Troubleshooting.
 
 Documentation
 -------------
 - for lazy people:
+  
   >>> from mlabwrap import mlab; mlab.plot([1,2,3])
 
 - for a complete description:
@@ -156,6 +165,7 @@ Warning messages (and messages to stdout) are also displayed:
 Warning: Log of zero.
 array([       [             -inf]])
 
+
 Comparison to other existing modules
 ------------------------------------
 
@@ -209,6 +219,27 @@ pickling scheme uses matlab's `save` command to create a binary version of
 the proxy's contents which is then pickled, together with the proxy object
 by python itself. Hope that gives a vague idea, for more info study the
 source.
+
+Troubleshooting
+---------------
+If on importing mlabwrap you get somthing like this::
+
+ ImportError: libeng.so: cannot open shared object file: No such file or directory
+
+then chances are that the relevant matlab libraries are not in you library
+path. You can rectify this situation in a number of ways; let's assume your
+running linux and that the libraries are in
+``/usr/local/matlab/extern/lib/glnx86/``
+
+1. As a normal user, you can append the path to LD_LIBRARY_PATH (under bash)::
+
+   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/matlab/extern/lib/glnx86/
+
+2. As root, you can either add the matlab library path to ``/etc/ld.so.conf``
+   and run ``ldconfig``
+
+3. Or, ugly but also works: just copy or symlink all the libraries to
+   ``/usr/lib`` or something else that's in your library path.
 
 
 Credits

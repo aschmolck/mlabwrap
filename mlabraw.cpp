@@ -37,6 +37,7 @@
    * Bug fixes:
      - fixed serious memory violation bug: conversion of all flat Numeric
        vectors caused illegal memory access (in the copyNumeric... routines).
+     - fixed serious memory leak (objects copied into matlab space are never destroyed)
      - fixed other segfaults that resulted from passing 'wrong' argument types
        to `put` (0-d arrays (now converted), numbers (now converted) and other
        non-array types (now should cause a warning message))
@@ -131,7 +132,7 @@ static PyStringObject *mx2char(const mxArray *pArray)
   int buflen;
   char *buf;
   PyStringObject *lRetval;
-  if (mxGetM(pArray) != 1) {
+  if (mxGetM(pArray) > 1) {
     pyGenericError(mlabraw_error, "Only 1 Dimensional strings are currently supported");
     return NULL;
   }
@@ -706,7 +707,7 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
     mxDestroyArray(lArray);
     return NULL;
   }
-
+  mxDestroyArray(lArray);
   Py_INCREF(Py_None);
   return Py_None;
 }

@@ -9,6 +9,9 @@
 ## o keywords: matlab wrapper
 ## o license: MIT
 ## o FIXME:
+##   - add test that defunct proxy-values are culled from matlab workspace
+##     (for some reason ipython seems to keep them alive somehwere, even after
+##     a zaphist, should find out what causes that!)
 ##   - add tests for exception handling!
 ##   - the proxy getitem/setitem only works properly for 1D arrays
 ##   - multi-dimensional arrays are unsupported
@@ -309,6 +312,12 @@ class MlabWrap(object):
         """Automatically return 1xn matrices as flat numeric arrays."""
         self._flatten_col_vecs = False
         """Automatically return nx1 matrices as flat numeric arrays."""
+        self._clear_call_args = True
+        """Remove the function args from matlab workspace after each function
+        call. Otherwise they are left to be (partly) overwritten by the next
+        function call. This saves a function call in matlab but means that the
+        memory used up by the arguments will remain unreclaimed till
+        overwritten."""
         self._session = mlabraw.open()
         self._proxies = weakref.WeakValueDictionary()
         self._proxy_count = 0
@@ -420,41 +429,49 @@ class MlabWrap(object):
         nout =  kwargs.get('nout', 1)
         #XXX what to do with matlab screen output
         argnames = []
-        for arg, count in zip(args, xrange(sys.maxint)):
-            if isinstance(arg, MlabObjectProxy):
-                argnames.append(arg._name)
-            else:
-                argnames.append('arg%d__' % count)
-                # have to convert these by hand
-##                 try:
-##                     arg = self._as_mlabable_type(arg)
-##                 except TypeError:
-##                     raise TypeError("Illegal argument type (%s.:) for %d. argument" %
-##                                     (type(arg), type(count)))
-                mlabraw.put(self._session,  argnames[-1], arg)
+        tempargs = []
+        try:
+            for arg, count in zip(args, xrange(sys.maxint)):
+                if isinstance(arg, MlabObjectProxy):
+                    argnames.append(arg._name)
+                else:
+                    nextName = 'arg%d__' % count
+                    argnames.append(nextName)
+                    tempargs.append(nextName)
+                    # have to convert these by hand
+    ##                 try:
+    ##                     arg = self._as_mlabable_type(arg)
+    ##                 except TypeError:
+    ##                     raise TypeError("Illegal argument type (%s.:) for %d. argument" %
+    ##                                     (type(arg), type(count)))
+                    mlabraw.put(self._session,  argnames[-1], arg)
 
-        if args:
-            cmd = "%s(%s)%s" % (cmd, ", ".join(argnames),
-                                ('',';')[kwargs.get('show',0)])
-        # got three cases for nout:
-        # 0 -> None, 1 -> val, >1 -> [val1, val2, ...]
-        if nout == 0:
-            handle_out(mlabraw.eval(self._session, cmd))
-            if argnames:
-                handle_out(mlabraw.eval(self._session, "clear('%s');" % "', '".join(argnames)))
-            return
-        # deal with matlab-style multiple value return
-        resSL = ((["RES%d__" % i for i in range(nout)]))
-        handle_out(mlabraw.eval(self._session, '[%s]=%s;' % (", ".join(resSL), cmd)))
-        res = self._get_values(resSL)
-        
-        if nout == 1: res = res[0]
-        else:         res = tuple(res)
-        if kwargs.has_key('cast'):
-            if nout == 0: raise TypeError("Can't cast: 0 nout")
-            return kwargs['cast'](res)
-        else:
-            return res
+            if args:
+                cmd = "%s(%s)%s" % (cmd, ", ".join(argnames),
+                                    ('',';')[kwargs.get('show',0)])
+            # got three cases for nout:
+            # 0 -> None, 1 -> val, >1 -> [val1, val2, ...]
+            if nout == 0:
+                handle_out(mlabraw.eval(self._session, cmd))
+                if argnames:
+                    handle_out(mlabraw.eval(self._session, "clear('%s');" % "', '".join(argnames)))
+                return
+            # deal with matlab-style multiple value return
+            resSL = ((["RES%d__" % i for i in range(nout)]))
+            handle_out(mlabraw.eval(self._session, '[%s]=%s;' % (", ".join(resSL), cmd)))
+            res = self._get_values(resSL)
+
+            if nout == 1: res = res[0]
+            else:         res = tuple(res)
+            if kwargs.has_key('cast'):
+                if nout == 0: raise TypeError("Can't cast: 0 nout")
+                return kwargs['cast'](res)
+            else:
+                return res
+        finally:
+            if self._clear_call_args:
+                mlabraw.eval(self._session, "clear('%s');" %
+                             "','".join(tempargs))
     # this is really raw, no conversion of [[]] -> [], whatever
     def _get(self, name, remove=False):
         varname = name
@@ -606,119 +623,3 @@ MlabError = mlabraw.error
 __all__ = ['mlab', 'MlabWrap', 'MlabError']
 
 #FIXME if not sys.modules.get('mlabwrap.mlab'): sys.modules['mlabwrap.mlab'] = mlab
-
-## TESTING CODE
-# this test code is an ugly mess, but it tests quite a bit
-if __name__ in ("__main__", "__IPYTHON_main__"):
-    def _test_sanity():
-        import Numeric
-        array = Numeric.array
-        from MLab import rand
-        from random import randrange
-        "This largely tests basic mlabraw conversion functionality"
-        for i in range(30):
-            if i % 4: # every 4th is a flat vector
-                a = rand(randrange(1,20))
-            else:
-                a = rand(randrange(1,3),randrange(1,3))
-            try:
-                mlab._set('a', a)
-                assert `a` == `mlab._get('a')`
-                # make sure strides also work OK!
-                mlab._set('a', a[::-2])
-                assert `a[::-2]` == `mlab._get('a')`
-                if len(a.shape) > 1:
-                    mlab._set('a', a[0:-3:3,::-1])
-                    assert `a[0:-3:3,::-1]` == `mlab._get('a')`
-                mlab.clear('a')                
-            except AssertionError:
-                print "A:\n%s\nB:\n%s|n" % (a, mlab._get('a'))
-                raise
-            # the tricky diversity of empty arrays
-            mlab._set('a', [[]])
-            assert `mlab._get('a')` == "zeros((1, 0), 'd')"
-            mlab._set('a', Numeric.zeros((0,0)))
-            assert `mlab._get('a')` == "zeros((0, 0), 'd')"
-            mlab._set('a', [])
-            assert `mlab._get('a')` == "zeros((0, 0), 'd')"
-            # 0d
-            mlab._set('a', -2)
-            assert `mlab._get('a')` == "array([       [-2.]])"
-            mlab._set('a', array(-2))
-            assert `mlab._get('a')` == "array([       [-2.]])"
-            # complex 1D
-            mlab._set('a', [1+3j, -4+2j, 6-5j])
-            assert `mlab._get('a')`.replace(" ", "") == "array([[1.+3.j],\n[-4.+2.j],\n[6.-5.j]])"
-            # complex 2D
-            mlab._set('a', [[1+3j, -4+2j, 6+5j], [9+3j, 1, 3-2j]])
-            assert `mlab._get('a')`.replace(" ", "") == 'array([[1.+3.j,-4.+2.j,6.+5.j],\n[9.+3.j,1.+0.j,3.-2.j]])'
-            mlab.clear('a')
-        # try basic error handling
-        try: mlab._set('a', [[[1]]])
-        except TypeError: pass
-        else: assert 0, "wrong exception"
-        try: mlab._get('dontexist')
-        except MlabError: pass
-        else: assert 0, "wrong exception"
-        try: mlab.round()
-        except MlabError, msg:
-            print "FOO", `str(msg).strip()`
-            if str(msg).strip() != 'Error using ==> round\nIncorrect number of inputs.': assert 0
-        else: assert 0, "wrong exception"
-                
-    _test_sanity()
-
-    # test more subtle stuff
-    from awmstools import saveVars, loadVars
-    array = Numeric.array
-    _test_sanity()
-    assert mlab.sort(1) == Numeric.array([1.])
-    assert mlab.sort([3,1,2]) == Numeric.array([1., 2., 3.])
-    assert mlab.sort(Numeric.array([3,1,2])) == Numeric.array([1., 2., 3.])
-    sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
-    bct = mlab._do("struct('type',{'BIG','little'},'color','red')")
-    print sct
-    assert sct[1].x == 4
-    sct[1].x  = 'New Value'
-    assert sct[1].x == 'New Value'
-    assert bct[0].type == 'BIG' and sct[0].type == 'big'
-    mlab._set('foo', 1)
-    assert mlab._get('foo') == Numeric.array([1.])
-    assert not mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
-           ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
-    mlab._optionally_convert['cell'] = True
-    assert mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
-           ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
-    mlab._optionally_convert['cell'] = False
-    mlab.clear('foo')
-    try:
-        print mlab._get('foo')
-    except: print "deletion worked"
-    print sct
-    print `bct`
-    #FIXME: add tests for assigning and nesting proxies
-    help(mlab.who)
-    mlab._optionally_convert['cell'] = True
-    assert mlab.who() == ['HOME', 'PROXY_VAL0__', 'PROXY_VAL1__']
-    print "TESTING PICKLING"
-    saveVars('/tmp/saveVars', 'sct bct')
-    namespace = {}
-    loadVars('/tmp/saveVars', 'sct bct', namespace)
-    assert len(mlab._proxies) == 4
-    print namespace['sct']
-    assert namespace['sct'][1].x == 'New Value'
-    namespace['sct'][1].x = 'Even Newer Value'
-    assert namespace['sct'][1].x ==  'Even Newer Value'
-    assert sct[1].x == 'New Value'
-    del sct
-    del bct
-    del namespace['sct']
-    del namespace['bct']
-    mlab._set('bar', '1234')
-    x = []
-    mlab._do("disp 'hallo'" ,nout=0, handle_out=x.append)
-    assert x[0] == 'hallo\n'
-    assert mlab.who() == ['HOME', 'bar']
-    mlab._optionally_convert['cell'] = False
-
-

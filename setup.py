@@ -1,10 +1,18 @@
 #!/usr/bin/env python
+# Variables you might have to change for your installation
+MATLAB_DIR=None
+EXTRA_COMPILE_ARGS=None
+PYTHON_INCLUDE_DIR = None #XXX where to find Numeric/*.h 
 from distutils.core import setup, Extension
-import sys, os, os.path
+from distutils.file_util import copy_file
+import sys, os, os.path, shutil
 import re
-
+shove = lambda src, dst: copy_file(src, dst, preserve_mode=1, preserve_times=1)
+if sys.version_info < (2,2):
+    print >> sys.stderr, "You need at least python 2.2"
+    sys.exit(1)
 def whichAreMissing(modules):
-    from distutils.version import StrictVersion as Version    
+    from distutils.version import StrictVersion as Version
     missing = {}
     for name, version in modules:
         try:
@@ -14,14 +22,6 @@ def whichAreMissing(modules):
         except ImportError, AttributeError:
             missing[name] = 1
     return missing.keys()
-
-if sys.version_info < (2,2):
-    print >> sys.stderr, "You need at least python 2.2"
-    sys.exit(1)
-
-# Variables you might have to change for your installation
-MATLAB_DIR=None
-EXTRA_COMPILE_ARGS=None
 
 # no modifications should be necessary beyond this point
 if sys.platform.startswith('win'):
@@ -65,7 +65,9 @@ if os.getenv("BUILD_DIST"):
     print "BUILDING DIST"
     missingModules = [t[0] for t in requiredModules]
     print "added: %r"
-
+if missingModules:
+    for missingModule in missingModules:
+        shove(os.path.join("others",missingModule + ".py"), "missing")
 setup (# Distribution meta-data
        name = "mlabwrap",
        version = "0.9b1",
@@ -73,14 +75,16 @@ setup (# Distribution meta-data
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
        url = "http://alexander.schmolck.org/python/code",
-       py_modules = ['mlabwrap'] + missingModules,
-       package_dir = {'': '.'},
+       package_dir = {'': 'missing'},
+       packages=['.'],
        ext_modules = 
            [Extension('mlabrawmodule', ['mlabraw.cpp'],
                       library_dirs=MATLAB_LIBRARY_DIRS ,
                       libraries=MATLAB_LIBRARIES,
-                      include_dirs=MATLAB_INCLUDE_DIRS,
+                      include_dirs=MATLAB_INCLUDE_DIRS + (PYTHON_INCLUDE_DIR and [PYTHON_INCLUDE_DIR] or []),
                       extra_compile_args=EXTRA_COMPILE_ARGS,
                       ),
            ]
       )
+shutil.rmtree("missing")
+os.mkdir("missing")
