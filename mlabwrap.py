@@ -11,17 +11,18 @@
 ##   - issues to deal with: return casts (ints can only be passed as
 ##     arrays etc)., multiple value returns, special commands...
 ##   - assignment commands should be guessed as nout=0 automatically
+## o FIXME:
+##   - proxy and nested access
 ## o XXX:
+##   - better error reporting: test for number of input args etc.
 ##   - allow switching between Numeric arrays an my wonderful matrix class
 ##   - autosync_dirs is a bit of a hack...
-##   - matlab(tm) unhelpfully returns array([0.]) for empty 0x1 arrays!!!
-##     (should we try to do a workaround for this (and maybe other yucky
-##     things?))
+##   - pymat unhelpfully returns array([0.]) for empty 0x1 arrays
+##     (e.g. zeros(0,1))!!!  (should we try to do a workaround for this?)
+## o !!!:
+##   - matlab complex arrays are intelligently of type 'double'
+##   - ``class('func')`` but ``class(var)``
 
-
-## FIXME: - split and so on is crap: implement decent way to do it
-##          implement hashes for name-> casts,nout etc.
-##        - foo = legend vs. legend off
 """A wrapper for matlab, giving almost transparent access to matlab.
 
 More precisely, a wrapper around a wrapper:  Andrew Sterian's pymat
@@ -29,7 +30,10 @@ More precisely, a wrapper around a wrapper:  Andrew Sterian's pymat
 
 
 Limitations
-    - The return values of the matlab functions must be 2D or 1D arrays.
+    - The return values of the matlab functions must be 2D or 1D arrays or
+      strings (Well, there is some support for arbitrary matlab classes, but
+      that is rather experimental, so don't complain if horrible things
+      happen:)
     - There isn't proper error handling, because the underlying pymat doesn't
       have proper error handling either.
 
@@ -44,18 +48,67 @@ __version__ = "$Revision$"
 import os, sys, re
 import Numeric
 import pymat
+import weakref
 
 # the following lines are just there for standaloness and downwards-compat.
-#from awmstools import DEBUG_P, iupdate
-DEBUG_P = lambda *args, **kwargs:None
-def iupdate(d, e):
-    """Destructively update dict `d` with dict `e`."""
-    d.update(e)
-    return d
-try:     __metaclass__ = type
-except:  print "Warning using python version < 2.2"
+from awmstools import DEBUG_P, iupdate
+from awmsmeta import gensym
+DEBUG = 0
+#FIXME: nested access
+class MLabObjectProxy(object):
+    """A proxy class for matlab objects that can't be converted to python
+       types."""
+    def __init__(self, mlab_direct, name, parent=None):
+        self.__dict__['_mlab_direct'] = mlab_direct
+        self.__dict__['_name'] = name
+        self.__dict__['_parent'] = parent
+    def __repr__(self):
+        return "%s of matlab class:%s internal _name:%s %_parent: %s\n" % (
+            type(self).___name__, self._mlab_direct._do("class('%s')"),
+            self._name, self._parent,
+            self._mlab_direct._do("display(%s)" % self._name))
+    def __del__(self):
+        #XXX is that OK?
+        if not self._parent:
+            pymat.eval(self._mlab_direct._session, 'clear %s' % self._name)
+    def __getattr__(self, attr):
+        pymat.eval(self._mlab_direct.session, "TMP_VAL=%s.%s" % (self._name, attr))
+        if self._mlab_direct._can_convert("TMP_VAL"):
+            return self._mlab_direct._get("TMP_VAL", remove=True)
+        else:
+            return self._mlab_direct._make_proxy("TMP_VAL", self)
+        else:
+            return getattr(self._parent, "%s.%s" % (self._name, attr))
+    def __setattr__(self, attr, value):
+        if not self._parent:
+            self._mlab_direct._set("%s.%s" % (self._name, attr), value)
+        else:
+            setattr(self._parent, "%s.%s" % (self._name, attr), value)
+    def __getitem__(self, index):
+        if not type(index) is int:
+            raise TypeError("Currently only integer indices are supported.")
+        if not self._parent:
+            pymat.eval(self._mlab_direct.session, "TMP_VAL=%s(%d)" % (self._name, index+1))
+            if self._mlab_direct._can_convert("TMP_VAL"):
+                return self._mlab_direct._get("TMP_VAL", remove=True)
+            else:
+                return self._mlab_direct._make_proxy("TMP_VAL", self)
+        else:
+            return getattr(self._parent, "%s(%d)" % (self._name, index+1))
+    def __setitem__(self, index, value):
+        if not type(index) is int:
+            raise TypeError("Currently only integer indices are supported.")
+        if not self._parent:
+            self._mlab_direct._set("%s(%d)" % (self._name, index+1), value)
+        else:
+            setattr(self._parent, "%s(%d)" % (self._name, index+1), value)
+        pymat.put(self._mlab_direct._session, "TMP_VAL__", value)
+        pymat.eval(self._mlab_direct._session, "%s(%d) = TMP_VAL__" % (self._name, index+1))
+        pymat.eval(self._mlab_direct._session, "clear TMP_VAL__")
+
+
     
-class MLabDirect:
+class MLabDirect(object):
     """This implements a powerful and simple to use wrapper that makes using
     matlab(tm) from python almost completely transparent. To use simply do:
     
@@ -70,80 +123,58 @@ class MLabDirect:
     >>> mlab.sort([3,1,2])
     array([ 1.,  2.,  3.])
 
-    For names that are reserved in python (like print) do:
-
-    >>> mlab.print_()
-
-    There are two synataxes in matlab that have no direct equivalent in
-    python:
-
-    Special "Command Syntax" as alternative to function syntax
-
-        In matlab some commands have an (usually additional) special call
-        syntax without ``hold('on')`` and ``hold on``
-
-    Multiple value returns
-    
-        It makes a difference how many variable you assign to a function. For
-        example, if you say ``a = sort([3,1,2])`` you will just receive the
-        sorted array, but if you do ``[a,b] = sort([3,1,2])`` you will receive
-        the sorted array as ``a`` and the new order of the elements as ``b``.
-        Similarly, also unlike python not every "function" returns a value and
-        so it is an error to say
-    
-    For matlab(tm)'s idiosyncratic non-function syntax (e.g. ``hold on``) you
-    can use the following shortcut:
-    
-    >>> mlab.hold_on() 
-
-    along the same lines ``hold`` translates to:
-
-    >>> mlab.hold()
-
-    #XXX this is a stupid example, because hold('on') also works...
-    
-
-    If you need to emulate multiple value return, do:
+    MLab, unlike python has multiple value returns. To emulate calls like
+    ``[a,b] = sort([3,2,1])`` just do:
 
     >>> mlab.sort([3,1,2], nout=2)
     (array([ 1.,  2.,  3.]), array([ 2.,  3.,  1.]))
-    
-    In almost all cases that should be enough --i f you need to emulate
-    multiple return values and other trickier things, then get raw with
-    ``mlab._do``, or build your child class that handles what you want.
 
-    Examples:
-    
-    >>> mlab._do('a = [1,2,3]', nout=0)
-    >>> mlab._get('a')
-    array([ 1.,  2.,  3.])
+    For names that are reserved in python (like print) do:
 
-    The sort example above could less conviniently be written as:
+    >>> mlab.print_()
     
-    >>> mlab._do('sort', [3,1,2])
-    array([ 1.,  2.,  3.])
-    
+    In almost all cases that should be enough -- if you need to do trickier
+    things, then get raw with ``mlab._do``, or build your child class that
+    handles what you want.
     """
     
-    def __init__(self, splitter="_", autosync_dirs=1):
+    def __init__(self, array_cast=None, autosync_dirs=1):
         """Create a new matlab(tm) wrapper object with its own session.
 
         :Paramters:
-        
-        - `splitter` is a regexp that's used to find out whether a command
-          needs refidling into into matlab-idiosyncratic syntax (e.g. if
-          splitter is ``"_"``, ``hold_on()`` gets translated ``hold on``
-          rather than ``hold_on()``).XXX
 
+        - `array_cast` specifies a cast for arrays. If the result of an
+          operation is a Numeric array, ``return_type(res)`` will be returned
+          instead.
+        
         - `autosync_dirs` specifies whether the working directory of the
           matlab session should be kept in sync with that of python.
         """
+        self.array_cast = array_cast        
+        self.autosync_dirs = autosync_dirs
         self._session = pymat.open()
         self._command_cache = {}
-        self.autosync_dirs = autosync_dirs
-        self.splitter = splitter
+        self._proxies = weakref.WeakValueDictionary()
+        self._permanent_names = []
+        self._convertable = ('double', 'char')
+        
     def __del__(self):
         pymat.close(self._session)
+    def _can_convert(self, varname):
+        pymat.eval(self._session, "TMP_CLS__ = class(%s)" % varname) #FIXME for funcs we would need ''s
+        res_type = pymat.get(self._session, "TMP_CLS__")
+        pymat.eval(self._session, "clear TMP_CLS__")
+        # we only now how to deal with double (includes complex) matrices and
+        # strings
+        return res_type in self._convertable
+    def _make_proxy(self, varname):
+        proxy_val_name = "PROXY_VAL%d___" % len(self._proxies)
+        pymat.eval(self._session, "%s = %s" % (proxy_val_name, varname))
+        res = MLabObjectProxy(self, proxy_val_name)
+        self._proxies[proxy_val_name] = weakref.ref(res)
+        return res
+        #return MLabObjectProxy(self, parent._name + varname, parent)         #FIXME
+
     def _do(self, cmd, *args, **kwargs):
         """Semi-raw execution of a matlab command.
         
@@ -168,107 +199,171 @@ class MLabDirect:
         if self.autosync_dirs:
             pymat.eval(self._session,  'cd %s' % os.getcwd())
         nout =  kwargs.get('nout', 1)
+        DEBUG_P("", (("nout", nout),))
         argnames = []
         for arg, count in zip(args, xrange(sys.maxint)):
-            argnames.append('arg%d__' % count)
-            # have to convert these by hand
-            if   isinstance(arg, (int, float, long, complex)):
-                pymat.eval(self._session, '%s=%r' % (argnames[-1], arg))
-            #FIXME what about unicode and other seq-thingies?
-            elif isinstance(arg, (Numeric.ArrayType, list, tuple, str)):
-                pymat.put(self._session,  argnames[-1], arg)
+            if isinstance(arg, MLabObjectProxy):
+                argnames.append(MLabObjectProxy.name)
             else:
-                raise TypeError("Illegal argument type (%s) for %d. argument" %
-                                (type(arg), type(count)))
+                argnames.append('arg%d__' % count)
+                # have to convert these by hand
+                if   isinstance(arg, (int, float, long, complex)):
+                    pymat.eval(self._session, '%s=%r' % (argnames[-1], arg))
+                #FIXME what about unicode and other seq-thingies?
+                elif isinstance(arg, (Numeric.ArrayType, list, tuple, str)):
+                    pymat.put(self._session,  argnames[-1], arg)
+                else:
+                    raise TypeError("Illegal argument type (%s) for %d. argument" %
+                                    (type(arg), type(count)))
         if args:
             cmd = "%s(%s)" % (cmd, ", ".join(argnames))
         # got three cases for nout:
         # 0 -> None, 1 -> val, >1 -> [val1, val2, ...]
         if nout == 0:
             pymat.eval(self._session, cmd)
-            res = None
+            if argnames:
+                pymat.eval(self._session, "clear('%s')" % "', '".join(argnames))
+            return
         # deal with matlab-style multiple value return
-        else:
-            resSL = ((["RES%d__" % i for i in range(nout)]))
-            pymat.eval(self._session, '[%s]=%s' % (", ".join(resSL), cmd))
-            res = []
-            for resS in resSL:
-                res.append(pymat.get(self._session, resS))
-                pymat.eval(self._session, "clear('%s')" % resS)
-            # nout = 1 ==> return ``val``, not ``[val]``
-            if nout == 1:
-                res = res[0]
-            else: # casting to tuple is nicer than dealing with list
-                res = tuple(res)
+        resSL = ((["RES%d__" % i for i in range(nout)]))
+        DEBUG_P("", (("resSL", resSL), ("cmd", cmd),))
+        pymat.eval(self._session, '[%s]=%s' % (", ".join(resSL), cmd))
+        res = []
+        to_clear = []
+        for resS in resSL:
+            #FIXME: this should be fixed in the c++ sources
+##             HACK zeros(0,1) etc. incorrectly returns array([1.])
+##             pymat.eval(self._session, "TMP__ = isempty(%s)" % resSL):
+##             if pymat.get("TMP__")[0]:
+##                 res.append(pymat...
+            pymat.eval(self._session, "clear('TMP__')")
+            DEBUG_P("determining res type", ())            
+            if self._can_convert(resS):
+                resPart = pymat.get(self._session, resS)
+                if self.array_cast and type(resPart) is Numeric.ArrayType:
+                    resPart = self.array_cast(resPart)
+            # we can't convert this to a python object, so we just create
+            # a proxy, and don't delete the real matlab reference until
+            # the proxy is garbage collected
+            else:
+                DEBUG_P("funny res", ())
+                resPart = self._make_proxy(resS)
+            res.append(resPart)
+        # XXX: if we have a very large number of results, this might cause
+        # a problem.
+        pymat.eval(self._session, "clear('%s')" % "','".join(resSL))
+        if nout == 1: res = res[0]
+        else:         res = tuple(res)
         pymat.eval(self._session, "clear('%s')" % "', '".join(argnames))
         if kwargs.has_key('cast'):
-            if nout == 0:
-                raise TypeError("Can't cast: 0 nout")
+            if nout == 0: raise TypeError("Can't cast: 0 nout")
             return kwargs['cast'](res)
         else:
             return res
     def _get(self, name):
-        return pymat.get(self._session, name)
+        pymat.eval(self._session, "TMP_VAL__ = %s" % name)
+        if self._can_convert("TMP_VAL__"):
+            res = pymat.get(self._session, "TMP_VAL__")
+        else:
+            res = self._make_proxy("TMP_VAL__")
+        pymat.eval(self._session, "clear TMP_VAL__")
+        return res
+    def _set(self, name, value):
+        if isinstance(value, MLabObjectProxy):
+            pymat.eval(self._session, "%s = %s" % (name, self.value._name))
+        else:
+            pymat.put(self._session, name, value)
     def __getattr__(self, attr):
-        
+        """Magically creates a wapper to a matlab function, procedure or
+        object on-the-fly."""
+        # print_ -> print        
+        if attr[-1] == "_": attr = attr[:-1]        
         if self._command_cache.has_key(attr):
             return self._command_cache[attr]
-        # print_ -> print
-        if attr[-1] == "_":
-            cmd = attr[:-1]
-        else:
-            cmd = attr
         typ = self._do("exist('%s')" % attr)
-        doc = self_do("help('%s')" % cmd)
+        doc = self._do("help('%s')" % attr)
         if   typ == 0: # doesn't exist
             raise AttributeError("No such matlab object: %s" % attr)
         elif typ == 5: # builtin
+            #FIXME: should we discard all this crap and just assume nout=1?
+            
+            # well, obviously matlab doesn't offer much in terms of
+            # introspective capabilities for builtins (*completely* unlike
+            # python <cough>), but with the aid of a simple regexp, we may
+            # still find out what we want.
             callSigRE = re.compile(r"""
-                 # either
-                 (?:
-                     # FOO...
-                     (?:^\s*)
-                   |
-                   (?:
-                      
-                         # A = FOO...
-                         (?P<argout1>[A-Z]+)
-                       |                     
-                         # [A,B] = FOO...
-                         \[(?:(?P<argout2>[A-Z]+),\s+)+\]
-                   
-                   )\s+=\s+
-                 )
-                 # the command name itself, upcased
-                 %s
-                 # either
-                 (?: 
-                     # FOO BAR QUUX (command syntax; this re doesn't work for
-                     # pathological cases like `print` and `delete`)
-                     (?:\s+(?P<argin1>[A-Z]*))+\s
-                  |
-                     # FOO(BAR, ...) (function call syntax)
-                     (?:
-                         \(
-                          (?P<argin2>
-                           (?:
-                            (?:\.{3})
-                            |
-                            (?:['\w+]),\s+
-                           )+?
-                          )
-                         \)
-                     )
-                 )
-            """ % attr.upper(), re.X)
-        else:
+            ^\s*
+            # opitonally return values, either
+            (?:
+              (?P<argout>
+                    # A = FOO...
+                    (?:[A-Z]+)
+                  |                     
+                    # [A,B] = FOO...
+                    \[
+                      (?:[A-Z]+,\s*)+[A-Z]+
+                    \]
+
+              )\s*=\s*
+            )?
+            # the command name itself, upcased
+            (?P<cmd>%s)
+            # the (optional) arguments; either
+            (?: 
+                # FOO BAR QUUX (command syntax; this re doesn't work for
+                # pathological cases like `print` and `delete`)
+                (?P<cmdargs>(?:\s+[A-Z]+)+)?\s
+             |
+                # FOO(BAR, ...) (function call syntax)
+                (?P<argin>
+                    \(
+                    .*
+                      (?:
+                       (?:\.\.\.),\s*
+                       |
+                       (?:['\w]+),\s*
+                      )*
+                    \)
+                )
+            )
+            """ % attr.upper(), re.X | re.M)
+            match_at = lambda what: match[callSigRE.groupindex[what]-1]
+            maxout = 0
+            maxin = 0
+            for match in callSigRE.findall(doc[doc.find("\n"):]):
+                DEBUG_P("", (("match", match),))
+                argout = match_at('argout')
+                #FIXME how are infinite nouts specified in docstrings?
+                if argout:
+                    maxout = max(maxout, len(argout.split(',')))
+                argin = match_at('argin')
+                if argin:
+                    if argin.find('...'):
+                        maxin = -1
+                    else:
+                        maxin = max(maxin, len(argin.split(',')))
+                cmdargs = match_at('cmdargs')
+                if cmdargs:
+                    maxin = max(maxin, len(cmdargs.split()))
+            if maxout == 0:
+                # an additional HACK for docs that aren't following the
+                # ``foo = bar(...)`` convention
+                if re.search(r'\b%s\(.+?\) (?:is|return)' % attr.upper(), doc):
+                    maxout = 1
+            nout = maxout #XXX
+            nin  = maxin
+        else: #XXX should this be ``elif typ == 2:`` ?
             nout = self._do("nargout('%s')" % attr)
-            #nin  = self._do("nargin('%s')" % attr)
+            nin  = self._do("nargin('%s')" % attr)
         def mlab_command(*args, **kwargs):
-            return self._do(cmd, *args, **iupdate({'nout': nout}, kwargs))
-        mlab_command.__doc__ = doc
+            # XXX are all `nout>1`s also useable as `nout==1`s?
+            return self._do(attr, *args, **iupdate({'nout': nout and 1}, kwargs))
+        mlab_command.__doc__ = "\n" + doc
         self._command_cache[attr] = mlab_command
         return mlab_command
         
 #mlab = MLabDirect()
 __all__ = MLabDirect
+if __name__ == "__main__":
+    mlab = MLabDirect()
+    #sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
