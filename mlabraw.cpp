@@ -17,7 +17,7 @@
   Revision History
   ================
 
-  mlabraw version 0.9b2 -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
+  mlabraw version 0.9b3 -- 2003-11-29 Alexander Schmolck (a.schmolck@gmx.net)
   --------------------------------------------------------------------------
   A modified, bugfixed and renamed version of pymat.
    
@@ -102,21 +102,6 @@
 //#define Py_DECREF(x) { if (x == NULL) {printf ("FUCKING HELL\n");}}
 static PyObject *mlabraw_error;
 
-static void pyGenericError(PyObject *pException, const char *fmt, ...)
-{
-  char *lBuf = new char[2*strlen(fmt) + 1024];
-
-  va_list ap;
-  va_start(ap, fmt);
-  vsprintf(& lBuf[0], fmt, ap);
-  va_end(ap);
-
-  strcat(& lBuf[0], "\n");
-
-  PyErr_SetString(pException, & lBuf[0]);
-  delete [] lBuf;
-}
-
 #define pyassert(x,y) if (! (x)) { _pyassert(y); goto error_return; }
 
 static void _pyassert(const char *pStr)
@@ -133,7 +118,7 @@ static PyStringObject *mx2char(const mxArray *pArray)
   char *buf;
   PyStringObject *lRetval;
   if (mxGetM(pArray) > 1) {
-    pyGenericError(mlabraw_error, "Only 1 Dimensional strings are currently supported");
+    PyErr_SetString(mlabraw_error, "Only 1 Dimensional strings are currently supported");
     return NULL;
   }
   buflen = mxGetN(pArray) + 1;
@@ -141,7 +126,7 @@ static PyStringObject *mx2char(const mxArray *pArray)
   pyassert(buf, "Out of MATLAB(TM) memory");
 
   if (mxGetString(pArray, buf, buflen)) {
-    pyGenericError(mlabraw_error, "Unable to extract MATLAB(TM) string");
+    PyErr_SetString(mlabraw_error, "Unable to extract MATLAB(TM) string");
     mxFree(buf);
     return NULL;
   }
@@ -168,7 +153,7 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
 
   nd = mxGetNumberOfDimensions(pArray);
   if (nd > 2) {
-    pyGenericError(PyExc_TypeError, 
+    PyErr_SetString(PyExc_TypeError, 
                    "Only 1-D and 2-D arrays are currently supported");
     return NULL;
   }
@@ -299,7 +284,7 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 
   switch (pSrc->descr->type_num) {
   case PyArray_OBJECT:
-    pyGenericError(PyExc_TypeError, "Non-numeric array types not supported");
+    PyErr_SetString(PyExc_TypeError, "Non-numeric array types not supported");
     return NULL;
         
   case PyArray_CFLOAT:
@@ -477,7 +462,7 @@ static mxArray *char2mx(const PyObject *pSrc)
 
   lDst = mxCreateString(PyString_AsString(const_cast<PyObject *>(pSrc)));
   if (lDst == NULL) {
-    pyGenericError(mlabraw_error, "Unable to create MATLAB(TM) string");
+    PyErr_SetString(mlabraw_error, "Unable to create MATLAB(TM) string");
     return NULL;
   }
 
@@ -523,7 +508,7 @@ PyObject * mlabraw_open(PyObject *, PyObject *args)
   ep = engOpen(lStr);
 #endif
   if (ep == NULL) {
-    pyGenericError(mlabraw_error, "Unable to start MATLAB(TM) engine");
+    PyErr_SetString(mlabraw_error, "Unable to start MATLAB(TM) engine");
     return NULL;
   }
 
@@ -548,7 +533,7 @@ PyObject * mlabraw_close(PyObject *, PyObject *args)
   if (! PyArg_ParseTuple(args, "i:close", &lHandle)) return NULL;
 
   if (engClose((Engine *)lHandle) != 0) {
-    pyGenericError(mlabraw_error, "Unable to close session");
+    PyErr_SetString(mlabraw_error, "Unable to close session");
     return NULL;
   }
 
@@ -581,23 +566,27 @@ PyObject * mlabraw_eval(PyObject *, PyObject *args)
   if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return NULL;
   engOutputBuffer((Engine *)lHandle, retStr, BUFSIZE-1);
   if (engEvalString((Engine *)lHandle, lStr) != 0) {
-    pyGenericError(mlabraw_error, 
+    PyErr_SetString(mlabraw_error, 
                    "Unable to evaluate string in MATLAB(TM) workspace");
     return NULL;
   }
-  // AWMS XXX skip the prompt if there is one
-  if (strncmp(">> ", retStr, 3) == 0)
+  // skip the prompt if there is one
+  if (strncmp(">> ", retStr, 3) == 0) {
     retStr += 3;
+  }
+  else {
+    //XXX I think there is no prompt under windoze
+//     printf("###DEBUG: matlab output doesn't start with \">> \"!\n"
+//            "It starts with: '%s'\n"
+//            "The command was: '%s'\n", retStr, lStr);
+  }
   // "??? " is how an error message begins in matlab
   // obviously there is no proper way to test whether a command was
   // succesful... AAARGH
   if (strncmp("??? ", retStr, 4) == 0) {
-    pyGenericError(mlabraw_error, retStr + 4); // skip "??? "
+    PyErr_SetString(mlabraw_error, retStr + 4); // skip "??? "
     return NULL;
   }
-//     printf("#DEBUG: matlab output doesn't start with \">> \"!\n"
-//            "It starts with: '%s'\n"
-//            "The command was: '%s'\n", retStr, lStr);
   ret = (PyObject *)PyString_FromString(retStr);
   return ret;
 }
@@ -636,7 +625,7 @@ PyObject * mlabraw_get(PyObject *, PyObject *args)
   lArray = engGetArray((Engine *)lHandle, lName);
 #endif
   if (lArray == NULL) {
-    pyGenericError(mlabraw_error, 
+    PyErr_SetString(mlabraw_error, 
                    "Unable to get matrix from MATLAB(TM) workspace");
     return NULL;
   }
@@ -646,7 +635,7 @@ PyObject * mlabraw_get(PyObject *, PyObject *args)
   } else if (mxIsDouble(lArray)) {
     lDest = (PyObject *)mx2numeric(lArray);
   } else {                      // FIXME structs, cells and non-double arrays
-    pyGenericError(PyExc_TypeError, "Only strings and Numeric arrays are supported.");
+    PyErr_SetString(PyExc_TypeError, "Only strings and Numeric arrays are supported.");
     return NULL;
   }
   mxDestroyArray(lArray);
@@ -699,7 +688,7 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
   mxSetName(lArray, lName);
   if (engPutArray((Engine *)lHandle, lArray) != 0) {
 #endif
-    pyGenericError(mlabraw_error, 
+    PyErr_SetString(mlabraw_error, 
                    "Unable to put matrix into MATLAB(TM) workspace");
     mxDestroyArray(lArray);
     return NULL;
