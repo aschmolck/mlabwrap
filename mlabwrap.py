@@ -139,6 +139,9 @@ Fine points and limitations
 
     mlab._autosync_dirs = False
 
+- you can customize how matlab is called by setting the environment variable
+  `MLABRAW_CMD_STR`.
+
 - if you don't want to use Numeric arrays, but something else that's fine
   too::
 
@@ -161,13 +164,13 @@ to him for releasing his package as open source.
 
 
 
-Tested under matlab v6r12 and python2.2.1
+Tested under matlab v6r12 and python2.2.1 to python2.3.2
 
 See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 """
 __docformat__ = "restructuredtext en"
 __revision__ = "$Revision$"
-__version__ = "0.9b1"
+__version__ = "0.9b3"
 import warnings
 from pickle import PickleError
 import operator
@@ -358,7 +361,7 @@ class MlabWrap(object):
         function call. This saves a function call in matlab but means that the
         memory used up by the arguments will remain unreclaimed till
         overwritten."""
-        self._session = mlabraw.open()
+        self._session = mlabraw.open(os.getenv("MLABRAW_CMD_STR", ""))
         """Use ``mlab._proxies.values()`` for a list of matlab object's that
         are currently proxied."""
         self._proxies = weakref.WeakValueDictionary()
