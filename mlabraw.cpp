@@ -391,21 +391,41 @@ static char eval_doc[] =
 "MATLAB WORKSPACE!\n"
 ;
 
+//FIXME: this should really be PyString
 PyObject * pymat_eval(PyObject *, PyObject *args)
 {
-	char *lStr;
-    int lHandle;
+  //FIXME how large should this be? Should we allocate a permanent buffer?
+  const int  BUFSIZE=10000; 
+  char *buffer;
+  char *lStr;
+  char *retStr;
+  PyObject *ret;
+  int lHandle;
+  PyObject *retval;
     
-	if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return 0;
+    if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return 0;
 
+    buffer = (char *)mxCalloc(BUFSIZE, sizeof(char));
+    engOutputBuffer((Engine *)lHandle, buffer, BUFSIZE-1);
     if (engEvalString((Engine *)lHandle, lStr) NEQ 0) {
         pyGenericError(PyExc_RuntimeError, "Unable to evaluate string in MATLAB workspace");
         return 0;
     }
+    //printf("###DEBUG result of engEvalString is\n%s\n", buffer);
     
-
-    Py_INCREF(Py_None);
-    return Py_None;
+    // "??? " is how an error message begins in matlab
+    // obviously there is no proper way to test whether a command was
+    // succesful... AAARGH
+    if (strstr(buffer, ">> ??? ") EQ buffer) {
+      //puts("###DEBUG mlab_error");
+      pyGenericError(PyExc_RuntimeError, buffer);
+      mxFree(buffer); //FIXME: is that right?
+      return 0;
+    }
+    ret = (PyObject *)PyString_FromString(buffer);
+    mxFree(buffer);
+    return ret;
+;
 }
 
 static char get_doc[] = 
