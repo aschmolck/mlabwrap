@@ -194,12 +194,12 @@ def _flush_write_stdout(s):
 
 class CurlyIndexer(object):
     """A helper class to mimick ``foo{bar}``-style indexing in python."""
-    def __init__(self, proxy):
-        self.proxy = proxy
+    def __init__(self, proxyRef):
+        self.proxyRef = proxyRef
     def __getitem__(self, index):
-        return self.proxy.__getitem__(index, '{}')
+        return self.proxyRef().__getitem__(index, '{}')
     def __setitem__(self, index, value):
-        self.proxy.__setitem__(index, value, '{}')
+        self.proxyRef().__setitem__(index, value, '{}')
         
 class MlabObjectProxy(object):
     """A proxy class for matlab objects that can't be converted to python
@@ -221,8 +221,10 @@ class MlabObjectProxy(object):
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
         """To fake matlab's ``obj{foo}`` style indexing."""
-        #FIXME: bizzarrely this line makes the tests fail!!!
-        self.__dict__['_'] = CurlyIndexer(self)
+        #!!! use a weakref here so that matlab memory will be immediately
+        #    reclaimed once the proxy is no longer needed (otherwise we'd have
+        #    to wait for the cyclical GC)
+        self.__dict__['_'] = CurlyIndexer(weakref.ref(self))
     def __getstate__(self):
         "Experimental pickling support."
         if self.__dict__['_parent']:
@@ -357,6 +359,8 @@ class MlabWrap(object):
         memory used up by the arguments will remain unreclaimed till
         overwritten."""
         self._session = mlabraw.open()
+        """Use ``mlab._proxies.values()`` for a list of matlab object's that
+        are currently proxied."""
         self._proxies = weakref.WeakValueDictionary()
         self._proxy_count = 0
         self._mlabraw_can_convert = ('double', 'char')
@@ -500,8 +504,6 @@ class MlabWrap(object):
             # 0 -> None, 1 -> val, >1 -> [val1, val2, ...]
             if nout == 0:
                 handle_out(mlabraw.eval(self._session, cmd))
-                if argnames:
-                    handle_out(mlabraw.eval(self._session, "clear('%s');" % "', '".join(argnames)))
                 return
             # deal with matlab-style multiple value return
             resSL = ((["RES%d__" % i for i in range(nout)]))
