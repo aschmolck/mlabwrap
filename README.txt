@@ -1,5 +1,5 @@
 ===============
-mlabwrap v0.9b1
+mlabwrap v0.9b3
 ===============
 
 copyright (c) 2003 Alexander Schmolck (A.Schmolck@gmx.net)
@@ -23,13 +23,15 @@ license, see the mlabraw.cpp.
 Installation
 ------------
 
-If you're lucky (linux; matlab with its libraries installed and **in the
-library path**):
+If you're lucky (linux; matlab **v6.5** with its libraries installed and
+**in the library path**)::
 
   python setup.py install
 
-If not, you'll have to edit setup.py (if that's the case ,please share your
-improvements with me if). If the install proceeds but you get errors on
+If not, for example if your version is < **v6.5** or you installed matlab in
+an unusual location, you'll have to edit ``setup.py`` (if that's the case and
+you think its not specific to your particular installation, please share your
+improvements with me). If the install proceeds but you get errors on
 importing, see Troubleshooting.
 
 Documentation
@@ -39,7 +41,9 @@ Documentation
   >>> from mlabwrap import mlab; mlab.plot([1,2,3])
 
 - for a complete description:
-  see the 'doc' dir or just run ``pydoc mlabwrap``
+  see the doc_ dir or just run ``pydoc mlabwrap``
+  
+  .. _doc: doc/html/index.html
 
 - for people who like tutorials:
   see below
@@ -192,6 +196,18 @@ the `eval` step, you'll only notice because the subsequent `get` mysteriously
 fails.
 
 
+What's Missing?
+---------------
+
+- Untested under matlab 6.5 (which has seen an C-level interface change).
+- Handling of as arrays of (array) rank 3 or more as well as
+  non-double/complex arrays (currently everything is converted to
+  double/complex for passing to matlab and passing non-double/complex from
+  matlab is not not supported). Both should be reasonably easy to implement,
+  but I currently don't need them.
+- Better support for cells.
+
+
 Implemenation Notes
 -------------------
 
@@ -233,7 +249,7 @@ running linux and that the libraries are in
 
 1. As a normal user, you can append the path to LD_LIBRARY_PATH (under bash)::
 
-   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/matlab/extern/lib/glnx86/
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/matlab/extern/lib/glnx86/
 
 2. As root, you can either add the matlab library path to ``/etc/ld.so.conf``
    and run ``ldconfig``

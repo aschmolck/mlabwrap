@@ -10,6 +10,7 @@
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
 ####################################################################
+VERSION_6_5_OR_LATER=0      # MUST SET TO 0 for matlab < v6.5
 MATLAB_DIR=None             # e.g: '/usr/local/matlab'; 'c:/matlab6'
 EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
 PLATFORM_DIR=None           # e.g: 'glnx86'; r'win32/microsoft/msvc60'
@@ -29,7 +30,8 @@ SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already
 # *******************************************************************
 from distutils.core import setup, Extension
 from distutils.file_util import copy_file
-import sys, os, os.path, glob, re
+import os, os.path, glob, re
+import sys
 if sys.version_info < (2,2):
     print >> sys.stderr, "You need at least python 2.2"
     sys.exit(1)
@@ -79,7 +81,7 @@ please edit setup.py by hand and set MATLAB_DIR
 
 MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/extern/lib/" + PLATFORM_DIR]
 MATLAB_INCLUDE_DIRS = [MATLAB_DIR + "/extern/include"] #, "/usr/include"
-
+DEFINE_MACROS = VERSION_6_5_OR_LATER and [('_V6_5_OR_LATER',1)] or None
 setup (# Distribution meta-data
        name = "mlabwrap",
        version = "0.9b2",
@@ -90,6 +92,7 @@ setup (# Distribution meta-data
        py_modules = ["mlabwrap"] + SUPPORT_MODULES,
        ext_modules = [
            Extension('mlabrawmodule', ['mlabraw.cpp'],
+              define_macros=DEFINE_MACROS,
               library_dirs=MATLAB_LIBRARY_DIRS ,
               libraries=MATLAB_LIBRARIES,
                       include_dirs=MATLAB_INCLUDE_DIRS + (PYTHON_INCLUDE_DIR and [PYTHON_INCLUDE_DIR] or []),

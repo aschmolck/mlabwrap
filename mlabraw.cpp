@@ -575,32 +575,29 @@ PyObject * mlabraw_eval(PyObject *, PyObject *args)
   const int  BUFSIZE=10000;
   char buffer[BUFSIZE];
   char *lStr;
-  char *retStr;
+  char *retStr = buffer;
   PyObject *ret;
   int lHandle;
-    
   if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return NULL;
-  engOutputBuffer((Engine *)lHandle, buffer, BUFSIZE-1);
+  engOutputBuffer((Engine *)lHandle, retStr, BUFSIZE-1);
   if (engEvalString((Engine *)lHandle, lStr) != 0) {
     pyGenericError(mlabraw_error, 
                    "Unable to evaluate string in MATLAB(TM) workspace");
     return NULL;
   }
+  // AWMS XXX skip the prompt if there is one
+  if (strncmp(">> ", retStr, 3) == 0)
+    retStr += 3;
   // "??? " is how an error message begins in matlab
   // obviously there is no proper way to test whether a command was
   // succesful... AAARGH
-  if (strstr(buffer, ">> ??? ") == buffer) {
-    pyGenericError(mlabraw_error, buffer + 7); // skip ">> ??? "
+  if (strncmp("??? ", retStr, 4) == 0) {
+    pyGenericError(mlabraw_error, retStr + 4); // skip "??? "
     return NULL;
   }
-  // AWMS XXX skip first three chars of prompt
-  if (strcmp(">> ", buffer) <= 0)
-    retStr = buffer + 3;
-  else
 //     printf("#DEBUG: matlab output doesn't start with \">> \"!\n"
 //            "It starts with: '%s'\n"
-//            "The command was: '%s'\n", buffer, lStr);
-    retStr = buffer;
+//            "The command was: '%s'\n", retStr, lStr);
   ret = (PyObject *)PyString_FromString(retStr);
   return ret;
 }
@@ -633,9 +630,9 @@ PyObject * mlabraw_get(PyObject *, PyObject *args)
   if (! PyArg_ParseTuple(args, "is:get", &lHandle, &lName)) return NULL;
   
 // for matlab >= 6.5 (FIXME UNTESTED)
-#ifdef engGetVariable
+#ifdef _V6_5_OR_LATER
   lArray = engGetVariable((Engine *)lHandle, lName);
-# else
+#else
   lArray = engGetArray((Engine *)lHandle, lName);
 #endif
   if (lArray == NULL) {
@@ -696,8 +693,8 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
   
 
 // for matlab version >= 6.5 (FIXME UNTESTED)
-#ifdef engPutVariable
-  if engPutVariable((Engine *)lHandle, lName, lArray != 0) {
+#ifdef _V6_5_OR_LATER
+  if (engPutVariable((Engine *)lHandle, lName, lArray != 0)) {
 #else
   mxSetName(lArray, lName);
   if (engPutArray((Engine *)lHandle, lArray) != 0) {

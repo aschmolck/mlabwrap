@@ -153,7 +153,7 @@ Tested under matlab v6r12 and python2.2.1
 
 See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 """
-
+__docformat__ = "restructuredtext en"
 __revision__ = "$Revision$"
 __version__ = "0.9b1"
 
