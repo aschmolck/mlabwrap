@@ -10,7 +10,7 @@
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
 ####################################################################
-VERSION_6_5_OR_LATER=1      # MUST SET TO 0 for matlab < v6.5
+MATLAB_VERSION = 7          # e.g: 6 (one of (6, 6.5, 7))
 MATLAB_DIR=None             # e.g: '/usr/local/matlab'; 'c:/matlab6'
 EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
 PLATFORM_DIR=None           # e.g: 'glnx86'; r'win32/microsoft/msvc60'
@@ -52,8 +52,12 @@ please edit setup.py by hand and set MATLAB_DIR
     PLATFORM_DIR = PLATFORM_DIR or 'win32/microsoft/msvc60'
 # unices
 else:
-    MATLAB_LIBRARIES = MATLAB_LIBRARIES or \
-                       'eng mx mat mi ut'.split()
+    if not MATLAB_LIBRARIES:
+        if MATLAB_VERSION >= 7:
+            MATLAB_LIBRARIES = 'eng mx mat ut'.split()
+        else:
+            MATLAB_LIBRARIES = 'eng mx mat mi ut'.split()
+    
     CPP_LIBRARIES = ['stdc++'] #XXX strangely  only needed on some linuxes
     # try to guess where matlab is
     if not MATLAB_DIR:
@@ -80,9 +84,15 @@ please edit setup.py by hand and set MATLAB_DIR
     elif sys.platform.startswith('linux'):
         PLATFORM_DIR = PLATFORM_DIR or "glnx86"
 
-MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/extern/lib/" + PLATFORM_DIR]
+if MATLAB_VERSION >= 7:
+    MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/bin/" + PLATFORM_DIR]
+else:
+    MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/extern/lib/" + PLATFORM_DIR]
 MATLAB_INCLUDE_DIRS = [MATLAB_DIR + "/extern/include"] #, "/usr/include"
-DEFINE_MACROS = VERSION_6_5_OR_LATER and [('_V6_5_OR_LATER',1)] or None
+if MATLAB_VERSION >= 6.5:
+    DEFINE_MACROS = [('_V6_5_OR_LATER',1)]
+else:
+    DEFINE_MACROS = None
 setup (# Distribution meta-data
        name = "mlabwrap",
        version = "0.9b3",
@@ -100,4 +110,4 @@ setup (# Distribution meta-data
                      extra_compile_args=EXTRA_COMPILE_ARGS,
                      ),
            ]
-       ) 
+       )
