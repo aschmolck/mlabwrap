@@ -1,25 +1,25 @@
 /*
-  PYMAT -- A Python module that exposes the MATLAB(TM) engine interface
-  and supports passing Numeric arrays back and forth.
+  mlabraw -- A Python module that exposes the MATLAB(TM) engine
+  interface and supports passing Numeric arrays back and forth. It is
+  derived from Andrew Sterian's pymat.
 
 
   - FIXME:
-    * __array__ should also lead to autoconversion
-    * rename
-    * add test cases (different array types and 0d arrays)
-    * remove all dodgy conversion (tuples, lists, nums); 0-d is currently
-      unhandled, but if we switch to accept only 2D, that's fine
+    * add test cases (different array types and 0d arrays and '__array__'able
+      types)
 
   Revision History
   ================
 
-  Version 1.1 -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
-  -----------------------------------------------------------------
+  mlabraw version 0.9b -- 2003-01-21 Alexander Schmolck (a.schmolck@gmx.net)
+  --------------------------------------------------------------------------
+  A modified, bugfixed and renamed version of pymat.
+   
    * Interface changes:
      - removed (buggy and conceptually dubious) autoconversion of matlab(tm)
        1xN or Nx1 matrices to Numeric flat vectors 1x.
      - added proper error reporting: if something goes wrong during a matlab
-       Execution, now a `pymat.error`, is raised (not `RuntimeError`) with an
+       Execution, now a `mlabraw.error`, is raised (not `RuntimeError`) with an
        appropriate error message (from matlab(tm), if applicable) is raised
        (rather a kludge, thanks to matlab(tm)'s braindead C-interface). Also,
        passing incorrect types to the functions of this module now raises
@@ -38,13 +38,13 @@
      - reformated source code
      - reformated and adapted documentation.
 
-  Version 1.0 -- December 26, 1998, Andrew Sterian (asterian@umich.edu)
-  ---------------------------------------------------------------------
+  pymat version 1.0 -- December 26, 1998, Andrew Sterian (asterian@umich.edu)
+  ---------------------------------------------------------------------------
    * Initial release
 
   Copyright & Disclaimer
   ======================
-  Copyright (c) 2002, 2003 Alexander Schmolck <a.schmolck@gmx.net>
+  Copyright (c) 2002,2003 Alexander Schmolck <a.schmolck@gmx.net>
 
   Copyright (c) 1998,1999 Andrew Sterian. All Rights Reserved. mailto: steriana@gvsu.edu
 
@@ -69,7 +69,7 @@
 
 */
 
-#define PYMAT_VERSION "1.0"
+#define MLABRAW_VERSION "0.9b"
 
 // We're not building a MEX file, we're building a standalone app.
 #undef MATLAB_MEX_FILE
@@ -93,7 +93,7 @@
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #endif
 
-static PyObject* pymat_error = PyErr_NewException("pymat.error", NULL, NULL);
+static PyObject* mlabraw_error = PyErr_NewException("mlabraw.error", NULL, NULL);
 
 static void pyGenericError(PyObject *pException, const char *fmt, ...)
 {
@@ -130,7 +130,7 @@ static PyStringObject *mx2char(const mxArray *pArray)
   pyassert(buf, "Out of MATLAB(TM) memory");
 
   if (mxGetString(pArray, buf, buflen)) {
-    pyGenericError(pymat_error, "Unable to extract MATLAB(TM) string");
+    pyGenericError(mlabraw_error, "Unable to extract MATLAB(TM) string");
     mxFree(buf);
     return 0;
   }
@@ -461,7 +461,7 @@ static mxArray *char2mx(const PyObject *pSrc)
 
   lDst = mxCreateString(PyString_AsString(const_cast<PyObject *>(pSrc)));
   if (lDst EQ 0) {
-    pyGenericError(pymat_error, "Unable to create MATLAB(TM) string");
+    pyGenericError(mlabraw_error, "Unable to create MATLAB(TM) string");
     return 0;
   }
 
@@ -475,7 +475,7 @@ static char open_doc[] =
 "\n"
 "Opens a MATLAB(TM) engine session\n"
 "This function returns a handle to a new MATLAB(TM) engine session.\n"
-"For compatibility with the UNIX version of the PyMat module, this\n"
+"For compatibility with the UNIX version of the Mlabraw module, this\n"
 "function takes a single optional string parameter, but this parameter\n"
 "is always ignored under Win32.\n"
 #else
@@ -492,7 +492,7 @@ static char open_doc[] =
 #endif
 ;
 
-PyObject * pymat_open(PyObject *, PyObject *args)
+PyObject * mlabraw_open(PyObject *, PyObject *args)
 {
   Engine *ep;
   char *lStr = 0;
@@ -507,7 +507,7 @@ PyObject * pymat_open(PyObject *, PyObject *args)
   ep = engOpen(lStr);
 #endif
   if (ep EQ 0) {
-    pyGenericError(pymat_error, "Unable to start MATLAB(TM) engine");
+    pyGenericError(mlabraw_error, "Unable to start MATLAB(TM) engine");
     return 0;
   }
 
@@ -525,14 +525,14 @@ static char close_doc[] =
 "This function closes the MATLAB(TM) session whose handle was returned\n"
 "by a previous call to open().\n"
 ;
-PyObject * pymat_close(PyObject *, PyObject *args)
+PyObject * mlabraw_close(PyObject *, PyObject *args)
 {
   int lHandle;
 
   if (! PyArg_ParseTuple(args, "i:close", &lHandle)) return 0;
 
   if (engClose((Engine *)lHandle) NEQ 0) {
-    pyGenericError(pymat_error, "Unable to close session");
+    pyGenericError(mlabraw_error, "Unable to close session");
     return 0;
   }
 
@@ -550,10 +550,10 @@ static char eval_doc[] =
 "\n"
 "The output of the command is returned as a string.\n"
 "\n"
-"If there is an error a `pymat.error` with the error description is raised.\n"
+"If there is an error a `mlabraw.error` with the error description is raised.\n"
 ;
 
-PyObject * pymat_eval(PyObject *, PyObject *args)
+PyObject * mlabraw_eval(PyObject *, PyObject *args)
 {
   //XXX how large should this be?
   const int  BUFSIZE=10000;
@@ -566,7 +566,7 @@ PyObject * pymat_eval(PyObject *, PyObject *args)
   if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return 0;
   engOutputBuffer((Engine *)lHandle, buffer, BUFSIZE-1);
   if (engEvalString((Engine *)lHandle, lStr) NEQ 0) {
-    pyGenericError(pymat_error, 
+    pyGenericError(mlabraw_error, 
                    "Unable to evaluate string in MATLAB(TM) workspace");
     return 0;
   }
@@ -574,7 +574,7 @@ PyObject * pymat_eval(PyObject *, PyObject *args)
   // obviously there is no proper way to test whether a command was
   // succesful... AAARGH
   if (strstr(buffer, ">> ??? ") EQ buffer) {
-    pyGenericError(pymat_error, buffer);
+    pyGenericError(mlabraw_error, buffer + 7); // skip ">> ??? "
     return 0;
   }
   // AWMS XXX skip first three chars of prompt
@@ -604,7 +604,7 @@ static char get_doc[] =
 "The return value is a NumPy array with the same shape and elements as the\n"
 "MATLAB(TM) array.\n"
 ;
-PyObject * pymat_get(PyObject *, PyObject *args)
+PyObject * mlabraw_get(PyObject *, PyObject *args)
 {
   char *lName;
   int lHandle;
@@ -615,7 +615,7 @@ PyObject * pymat_get(PyObject *, PyObject *args)
 
   lArray = engGetArray((Engine *)lHandle, lName);
   if (lArray EQ 0) {
-    pyGenericError(pymat_error, 
+    pyGenericError(mlabraw_error, 
                    "Unable to get matrix from MATLAB(TM) workspace");
     return 0;
   }
@@ -649,7 +649,7 @@ static char put_doc[] =
 "\n"
 "A string parameter is converted to a MATLAB char-valued array.\n"
 ;
-PyObject * pymat_put(PyObject *, PyObject *args)
+PyObject * mlabraw_put(PyObject *, PyObject *args)
 {
   char *lName;
   int lHandle;
@@ -673,7 +673,7 @@ PyObject * pymat_put(PyObject *, PyObject *args)
   mxSetName(lArray, lName);
 
   if (engPutArray((Engine *)lHandle, lArray) NEQ 0) {
-    pyGenericError(pymat_error, 
+    pyGenericError(mlabraw_error, 
                    "Unable to put matrix into MATLAB(TM) workspace");
     mxDestroyArray(lArray);
     return 0;
@@ -685,23 +685,23 @@ PyObject * pymat_put(PyObject *, PyObject *args)
   return Py_None;
 }
 
-static PyMethodDef PymatMethods[] = {
-  { "open",       pymat_open,       1, open_doc },
-  { "close",      pymat_close,      1, close_doc },
-  { "eval",       pymat_eval,       1, eval_doc },
-  { "get",        pymat_get,        1, get_doc },
-  { "put",        pymat_put,        1, put_doc },
+static PyMethodDef MlabrawMethods[] = {
+  { "open",       mlabraw_open,       1, open_doc },
+  { "close",      mlabraw_close,      1, close_doc },
+  { "eval",       mlabraw_eval,       1, eval_doc },
+  { "get",        mlabraw_get,        1, get_doc },
+  { "put",        mlabraw_put,        1, put_doc },
   { 0, 0}
 };
 
-extern "C" void initpymat(void);
+extern "C" void initmlabraw(void);
 
-void initpymat(void)
+void initmlabraw(void)
 {
   PyObject *module = 
-    Py_InitModule4("pymat",
-      PymatMethods,
-"PyMat -- Low-level MATLAB(tm) Engine Interface\n"
+    Py_InitModule4("mlabraw",
+      MlabrawMethods,
+"Mlabraw -- Low-level MATLAB(tm) Engine Interface\n"
 "\n"
 "  open  - Open a MATLAB(tm) engine session\n"
 "  close - Close a MATLAB(tm) engine session\n"
@@ -746,8 +746,8 @@ void initpymat(void)
   import_array();
 
   PyObject *dict = PyModule_GetDict(module);
-  PyObject *item = PyString_FromString(PYMAT_VERSION);
+  PyObject *item = PyString_FromString(MLABRAW_VERSION);
   PyDict_SetItemString(dict, "__version__", item);
   Py_XDECREF(item);
-  PyDict_SetItemString(dict, "error", pymat_error);
+  PyDict_SetItemString(dict, "error", mlabraw_error);
 }

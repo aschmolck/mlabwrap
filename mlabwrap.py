@@ -1,5 +1,5 @@
 ##############################################################################
-################ mlab_direct: transparently wraps matlab(tm) #################
+################## mlabwrap: transparently wraps matlab(tm) ##################
 ##############################################################################
 ##
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
@@ -7,13 +7,16 @@
 ## o last modified: $Date$
 ## o version: 0.5
 ## o keywords: matlab wrapper
-## o license: LGPL
+## o license: MIT
 ## o FIXME:
+##   - add tests for exception handling!
 ##   - the proxy getitem/setitem only works properly for 1D arrays
 ##   - multi-dimensional arrays are unsupported
+##   - convert testing to doctest
 ## o XXX:
-##   - treatment of lists, tuples and arrays with non-numerical values?
-##   - find out about classes and improve struct support
+##   - treatment of lists, tuples and arrays with non-numerical values (these
+##     should presumably be wrapped into wrapper classes MlabCell etc.)
+##   - should test classes and further improve struct support
 ##   - should we transform 1D vectors into row vectors when handing them to
 ##     matlab?
 ##   - what should be flattend? Should there be a scalarization opition?
@@ -25,46 +28,116 @@
 ##   - delattr
 ##   - better error reporting: test for number of input args etc.
 ##   - add cloning of proxies.
-##   - pickling for nested proxies
+##   - pickling for nested proxies (and session management for pickling)
 ##   - more tests
 ## o !!!:
 ##   - matlab complex arrays are intelligently of type 'double'
 ##   - ``class('func')`` but ``class(var)``
 
-"""A wrapper for matlab, giving almost transparent access to matlab, including
-online help and experimental pickling support.
+"""
+mlabwrap
+========
 
-More precisely, it is a wrapper around a wrapper: A modified version of Andrew
-Sterian's pymat (http://claymore.engineer.gvsu.edu/~steriana/Python/pymat.html).
+This module implements a powerful and simple to use wrapper that makes using
+matlab(tm) from python almost completely transparent. To use simply do:
 
-Limitations
-    - Only 2D matrices are directly supported as return values of matlab
-      functions (arbitrary matlab classes are supported via proxy objects --
-      in most cases this shouldn't make much of a difference (and these proxy
-      objects can be even pickled) -- still this functionality is yet
-      experimental).
+>>> from mlabwrap import mlab
 
-      One potential pitfall with structs (which are currently proxied) is that
-      setting indices of subarrays ``struct.part[index] = value`` might seem
-      to have no effect (since ``part`` can be directly represented as a
-      python array which will be modified without an effect on the proxy
-      ``struct``'s contents); in that case::
+and then just use whatever matlab command you like as follows:
 
-        some_array[index] = value; struct.part == some_array``
+>>> mlab.plot(range(10), 'ro:')
 
-      will have the desired effect.
-      
-    - Matlab doesn't know scalars, or 1D arrays. Consequently all functions
-      where on might expect a scalar or 1D array to be returned will return a
-      1x1 array instead. Also, because matlab is built around the 'double'
-      matrix type (which also includes complex matrices), other types will
-      most likely be cast to double (XXX). Note that row and column vectors
-      can be autoconverted automatically to 1D arrays if that is desired (see
-      `_flatten_row_vecs`).
+You can do more than just plotting:
+
+>>> mlab.sort([3,1,2])
+array([[ 1.,  2.,  3.]])
+
+N.B.: The result here is a 1x3 matrix (and not a flat lenght 3 array) of type
+double (and not int), as matlab built around matrices of type double (see
+`MlabWrap._flatten_row_vecs`).
+
+Matlab(tm)ab, unlike python has multiple value returns. To emulate calls like
+``[a,b] = sort([3,2,1])`` just do:
+
+>>> mlab.sort([3,1,2], nout=2)
+(array([[ 1.,  2.,  3.]]), array([[ 2.,  3.,  1.]]))
+
+For names that are reserved in python (like print) do:
+
+>>> mlab.print_()
+
+You can look at the documentation of a matlab function just by using help,
+as usual:
+
+>>> help(mlab.sort)
+
+In almost all cases that should be enough -- if you need to do trickier
+things, then get raw with ``mlab._do``, or build your child class that
+handles what you want.
+
+
+Fine points and limitations
+---------------------------
+
+- Only 2D matrices are directly supported as return values of matlab
+  functions (arbitrary matlab classes are supported via proxy objects --
+  in most cases this shouldn't make much of a difference (as these proxy
+  objects can be even pickled) -- still this functionality is yet
+  experimental).
+
+  One potential pitfall with structs (which are currently proxied) is that
+  setting indices of subarrays ``struct.part[index] = value`` might seem
+  to have no effect (since ``part`` can be directly represented as a
+  python array which will be modified without an effect on the proxy
+  ``struct``'s contents); in that case::
+
+    some_array[index] = value; struct.part = some_array``
+
+  will have the desired effect.
+  
+- Matlab doesn't know scalars, or 1D arrays. Consequently all functions
+  that one might expect to return a scalar or 1D array will return a 1x1
+  array instead. Also, because matlab(tm) is built around the 'double'
+  matrix type (which also includes complex matrices), single floats and
+  integer types will be cast to double. Note that row and column vectors
+  can be autoconverted automatically to 1D arrays if that is desired (see
+  `_flatten_row_vecs`).
+
+- for matlab(tm) function names like ``print`` that are reserved words in
+  python, so you have to add a trailing underscore (e.g. ``mlab.print_``).
+
+- sometimes you will have to specify the number of return arguments of a
+  function, e.g. ``a,b,c = mlab.foo(nout=3)``. MlabWrap will normally try to
+  figure out for you whether the function you call returns 0 or more values
+  (in which case by default only the first value is returned!). For builtins
+  this might fail (since unfortunately there seems to be no foolproof way to
+  find out in matlab), but you can always lend a helping hand::
+
+    mlab.foo = mlab._make_mlab_command('foo', nout=3, doc=mlab.help('foo'))
+
+  Now ``mlab.foo()`` will by default always return 3 values, but you can still
+  get only one by doing ``mlab.foo(nout=1)``
+
+- by default the working directory of matlab(tm) is kept in synch with that of
+  python to avoid unpleasant surprises. In case this behavior does instaed
+  cause you unpleasant surprises, you can turn it off with::
+
+    mlab._autosync_dirs = False
+
+
+Credits
+-------
+
+This is really a wrapper around a wrapper (mlabraw) which in turn is a
+modified and bugfixed version of Andrew Sterian's pymat
+(http://claymore.engineer.gvsu.edu/~steriana/Python/pymat.html), so thanks go
+to him for releasing his package as open source.
+
+
 
 Tested under matlab v6r12 and python2.2.1.
 
-See the docu of `MlabWrap`. 
+See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 """
 
 __version__ = "$Revision$"
@@ -78,7 +151,7 @@ from pickle import PickleError
 import operator
 import os, sys, re
 import Numeric
-import pymat
+import mlabraw
 import weakref
 import atexit
 
@@ -90,7 +163,7 @@ def _flush_write_stdout(s):
     """Writes `s` to stdout and flushes. Default value for ``handle_out``."""
     sys.stdout.write(s); sys.stdout.flush()
 
-class MLabObjectProxy(object):
+class MlabObjectProxy(object):
     """A proxy class for matlab objects that can't be converted to python
        types.
 
@@ -104,8 +177,8 @@ class MLabObjectProxy(object):
          some_array[1] = 3; proxy.foo = some_array
 
        """
-    def __init__(self, mlab_direct, name, parent=None):
-        self.__dict__['_mlab_direct'] = mlab_direct
+    def __init__(self, mlabwrap, name, parent=None):
+        self.__dict__['_mlabwrap'] = mlabwrap
         self.__dict__['_name'] = name
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
@@ -118,7 +191,7 @@ class MLabObjectProxy(object):
                 type(self).__name__)
         tmp_filename = os.path.join(
             tempfile.gettempdir(),
-            "mlab_pickle_%s.mat" % self._mlab_direct._session)
+            "mlab_pickle_%s.mat" % self._mlabwrap._session)
         try:
             mlab.save(tmp_filename, self._name)
             mlab_contents = slurpIn(tmp_filename, binary=1)
@@ -131,21 +204,21 @@ class MLabObjectProxy(object):
         
     def __setstate__(self, state):
         "Experimental unpickling support."
-        global mlab         #XXX: make this class var
+        global mlab         #XXX this should be dealt with correctly
         old_name = state['name']
         mlab_name = "UNPICKLED%s__" % gensym('')
         try:
             tmp_filename = tempfile.mktemp('.mat')
             spitOut(state['mlab_contents'], tmp_filename, binary=1)
-            pymat.eval(mlab._session,
+            mlabraw.eval(mlab._session,
                        "TMP_UNPICKLE_STRUCT__ = load('%s', '%s');" % (
                 tmp_filename, old_name))
-            pymat.eval(mlab._session,
+            mlabraw.eval(mlab._session,
                        "%s = TMP_UNPICKLE_STRUCT__.%s;" % (mlab_name, old_name))
-            pymat.eval(mlab._session, "clear TMP_UNPICKLE_STRUCT__;")
+            mlabraw.eval(mlab._session, "clear TMP_UNPICKLE_STRUCT__;")
             # XXX
             mlab._make_proxy(mlab_name, constructor=lambda *args: self.__init__(*args) or self)
-            pymat.eval(mlab._session, 'clear %s;' % mlab_name)
+            mlabraw.eval(mlab._session, 'clear %s;' % mlab_name)
         finally:
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
         
@@ -154,40 +227,40 @@ class MLabObjectProxy(object):
         output = []
         mlab._do('disp(%s)' % self._name, nout=0, handle_out=output.append)
         rep = output[0]
-        klass = self._mlab_direct._do("class(%s)" % self._name)
+        klass = self._mlabwrap._do("class(%s)" % self._name)
 ##         #XXX what about classes?
 ##         if klass == "struct":
-##             rep = "\n" + self._mlab_direct._format_struct(self._name)
+##             rep = "\n" + self._mlabwrap._format_struct(self._name)
 ##         else:
 ##             rep = ""
         return "<%s of matlab-class: %r; internal name: %r; has parent: %s>\n%s" % (
             type(self).__name__, klass,
-            self._name, ['no', 'yes'][bool(self._parent)],
+            self._name, ['yes', 'no'][not self._parent],
             rep)
     def __del__(self):
         if not self._parent:
-            pymat.eval(self._mlab_direct._session, 'clear %s;' % self._name)
+            mlabraw.eval(self._mlabwrap._session, 'clear %s;' % self._name)
     def _get_part(self, to_get):
-        if self._mlab_direct._var_type(to_get) in self._mlab_direct._pymat_can_convert:
-            #!!! need assignment to TMP_VAL__ because `pymat.get` only works with
+        if self._mlabwrap._var_type(to_get) in self._mlabwrap._mlabraw_can_convert:
+            #!!! need assignment to TMP_VAL__ because `mlabraw.get` only works with
             #    'atomic' values like ``foo`` and not e.g. ``foo.bar``.
-            pymat.eval(self._mlab_direct._session, "TMP_VAL__=%s" % to_get)
-            return self._mlab_direct._get('TMP_VAL__', remove=True)
-        return type(self)(self._mlab_direct, to_get, self)
+            mlabraw.eval(self._mlabwrap._session, "TMP_VAL__=%s" % to_get)
+            return self._mlabwrap._get('TMP_VAL__', remove=True)
+        return type(self)(self._mlabwrap, to_get, self)
     def _set_part(self, to_set, value):
         #FIXME s.a.
-        if isinstance(value, MLabObjectProxy):
-            pymat.eval(self._mlab_direct._session, "%s = %s;" % (to_set, value._name))
+        if isinstance(value, MlabObjectProxy):
+            mlabraw.eval(self._mlabwrap._session, "%s = %s;" % (to_set, value._name))
         else:
-            self._mlab_direct._set("TMP_VAL__", value)
-            pymat.eval(self._mlab_direct._session, "%s = TMP_VAL__;" % to_set)
-            pymat.eval(self._mlab_direct._session, 'clear TMP_VAL__;')
+            self._mlabwrap._set("TMP_VAL__", value)
+            mlabraw.eval(self._mlabwrap._session, "%s = TMP_VAL__;" % to_set)
+            mlabraw.eval(self._mlabwrap._session, 'clear TMP_VAL__;')
         
     def __getattr__(self, attr):
         return self._get_part("%s.%s" % (self._name, attr))
     def __setattr__(self, attr, value):
         self._set_part("%s.%s" % (self._name, attr), value)
-    #FIXME: those two only works ok for vectors
+    #FIXME: those two only work ok for vectors
     def __getitem__(self, index):
         if not isinstance(index, int):
             raise TypeError("Currently only integer indices are supported.")
@@ -197,48 +270,18 @@ class MLabObjectProxy(object):
             raise TypeError("Currently only integer indices are supported.")
         self._set_part("%s(%d)" % (self._name, index+1), value)
 
-class MLabConversionError(Exception):
+class MlabConversionError(Exception):
     """Raised when a mlab type can't be converted to a python primitive."""
     pass
     
 class MlabWrap(object):
-    """This implements a powerful and simple to use wrapper that makes using
-    matlab(tm) from python almost completely transparent. To use simply do:
-    
-    >>> from mlab_direct import mlab
-
-    and then just use whatever matlab command you like as follows:
-    
-    >>> mlab.plot(range(10), 'x')
-
-    You can do more than just plotting:
-
-    >>> mlab.sort([3,1,2])
-    array([[ 1.,  2.,  3.]])
-
-    N.B.: The result here is a 1x3 matrix (and not a flat lenght 3 array) of
-    type double (and not int), as matlab built around matrices of type double
-    (see `MlabWrap._flatten_row_vecs`).
-
-    MLab, unlike python has multiple value returns. To emulate calls like
-    ``[a,b] = sort([3,2,1])`` just do:
-
-    >>> mlab.sort([3,1,2], nout=2)
-    (array([[ 1.,  2.,  3.]]), array([[ 2.,  3.,  1.]]))
-
-    For names that are reserved in python (like print) do:
-
-    >>> mlab.print_()
-
-    You can look at the documentation of a matlab function just by using help,
-    as usual:
-
-    >>> help(mlab.sort)
-    
-    In almost all cases that should be enough -- if you need to do trickier
-    things, then get raw with ``mlab._do``, or build your child class that
-    handles what you want.
-    """
+    """This class does most of the wrapping work. It manages a single matlab
+       session (you can in principle have multiple open sessions if you want,
+       but I can see little use for this, so this feature is largely untested)
+       and automatically translates all attribute requests (that don't start
+       with '_') to the appropriate matlab function calls. The details of this
+       handling can be controlled with a number of instance variables,
+       documented below."""
     __all__ = [] #XXX a hack, so that this class can fake a module
     def __init__(self):
         """Create a new matlab(tm) wrapper object.
@@ -254,18 +297,17 @@ class MlabWrap(object):
         """Automatically return 1xn matrices as flat numeric arrays."""
         self._flatten_col_vecs = False
         """Automatically return nx1 matrices as flat numeric arrays."""
-        self._session = pymat.open()
-        self._command_cache = {}
+        self._session = mlabraw.open()
         self._proxies = weakref.WeakValueDictionary()
         self._proxy_count = 0
-        self._pymat_can_convert = ('double', 'char')
-        """The matlab(tm) types that pymat will automatically convert for us."""
+        self._mlabraw_can_convert = ('double', 'char')
+        """The matlab(tm) types that mlabraw will automatically convert for us."""
         self._optionally_convert = {'cell' : False}
         """The matlab(tm) types we can handle ourselves with a bit of
            effort. To turn on autoconversion for e.g. cell arrays do:
            ``mlab._optionally_convert["cell"] = True``."""
     def __del__(self):
-        pymat.close(self._session)
+        mlabraw.close(self._session)
     def _format_struct(self, varname):
         res = []
         fieldnames = self._do("fieldnames(%s)" % varname)
@@ -280,26 +322,26 @@ class MlabWrap(object):
 ##                                        for fv in fieldvalues])
         
     def _var_type(self, varname):
-        pymat.eval(self._session, "TMP_CLS__ = class(%s);" % varname) #FIXME for funcs we would need ''s
-        res_type = pymat.get(self._session, "TMP_CLS__")
-        pymat.eval(self._session, "clear TMP_CLS__;")
+        mlabraw.eval(self._session, "TMP_CLS__ = class(%s);" % varname) #FIXME for funcs we would need ''s
+        res_type = mlabraw.get(self._session, "TMP_CLS__")
+        mlabraw.eval(self._session, "clear TMP_CLS__;")
         return res_type
     
-    def _make_proxy(self, varname, parent=None, constructor=MLabObjectProxy):
+    def _make_proxy(self, varname, parent=None, constructor=MlabObjectProxy):
         """Creates a proxy for a variable.
 
         XXX create and cache nested proxies also here.
         """
         proxy_val_name = "PROXY_VAL%d__" % self._proxy_count
         self._proxy_count += 1
-        pymat.eval(self._session, "%s = %s;" % (proxy_val_name, varname))
+        mlabraw.eval(self._session, "%s = %s;" % (proxy_val_name, varname))
         res = constructor(self, proxy_val_name, parent)
         self._proxies[proxy_val_name] = res
         return res
 
-    ## this should be obsoleted by the changes to pymat
+    ## this should be obsoleted by the changes to mlabraw
 ##     def _as_mlabable_type(self, arg):
-##         # that should now be handled by pymat...
+##         # that should now be handled by mlabraw...
 ##         if   isinstance(arg, (int, float, long, complex)):
 ##             return Numeric.array([arg])
 ##         if operator.isSequenceType(arg):
@@ -311,7 +353,7 @@ class MlabWrap(object):
 ##                 raise TypeError("Unsuitable argument type: %s" % type(arg))
     def _get_cell(self, varname):
         # XXX can currently only handle 1D
-        pymat.eval(self._session,
+        mlabraw.eval(self._session,
                    "TMP_SIZE_INFO__ = \
                    [min(size(%(vn)s)) == 1 & ndims(%(vn)s) == 2, \
                    max(size(%(vn)s))];" % {'vn':varname})
@@ -319,13 +361,13 @@ class MlabWrap(object):
         if is_rank1:
             cell_bits = (["TMP%i%s__" % (i, gensym('_'))
                            for i in range(cell_len)])
-            pymat.eval(self._session, '[%s] = deal(%s{:});' %
+            mlabraw.eval(self._session, '[%s] = deal(%s{:});' %
                        (",".join(cell_bits), varname))
             # !!! this recursive call means we have to take care with
             # overwriting temps!!!
             return self._get_values(cell_bits)
         else:
-            raise MLabConversionError("Not a 1D cell array")
+            raise MlabConversionError("Not a 1D cell array")
     def _manually_convert(self, varname, vartype):
         if vartype == 'cell':
             return self._get_cell(varname)
@@ -336,7 +378,7 @@ class MlabWrap(object):
         if not varnames: raise ValueError("No varnames") #to prevent clear('')
         for varname in varnames:
             res.append(self._get(varname))
-        pymat.eval(self._session, "clear('%s');" % "','".join(varnames))
+        mlabraw.eval(self._session, "clear('%s');" % "','".join(varnames))
         return res
     
     def _do(self, cmd, *args, **kwargs):
@@ -345,11 +387,11 @@ class MlabWrap(object):
         Smartly handle calls to matlab, figure out what to do with `args`,
         and when to use function call syntax and not.
         
-        If no `args` are specified ``cmd`` not ``result = cmd()`` form is used
-        in Matlab -- this also makes literal matlab commands legal
+        If no `args` are specified, the ``cmd`` not ``result = cmd()`` form is
+        used in Matlab -- this also makes literal Matlab commands legal
         (eg. cmd=``get(gca, 'Children')``).
 
-        If `nout=0` is specified, the matlab command is executed as
+        If `nout=0` is specified, the Matlab command is executed as
         procedure, otherwise it is executed as function (default), nout
         specifying how many values should be returned (default 1).
 
@@ -359,15 +401,15 @@ class MlabWrap(object):
         XXX: should we add `parens` parameter?
         """
         handle_out = kwargs.get('handle_out', _flush_write_stdout)
-        #self._session = self._session or pymat.open()
+        #self._session = self._session or mlabraw.open()
         # HACK        
         if self._autosync_dirs:
-            pymat.eval(self._session,  'cd %s;' % os.getcwd())
+            mlabraw.eval(self._session,  'cd %s;' % os.getcwd())
         nout =  kwargs.get('nout', 1)
         #XXX what to do with matlab screen output
         argnames = []
         for arg, count in zip(args, xrange(sys.maxint)):
-            if isinstance(arg, MLabObjectProxy):
+            if isinstance(arg, MlabObjectProxy):
                 argnames.append(arg._name)
             else:
                 argnames.append('arg%d__' % count)
@@ -377,7 +419,7 @@ class MlabWrap(object):
 ##                 except TypeError:
 ##                     raise TypeError("Illegal argument type (%s.:) for %d. argument" %
 ##                                     (type(arg), type(count)))
-                pymat.put(self._session,  argnames[-1], arg)
+                mlabraw.put(self._session,  argnames[-1], arg)
 
         if args:
             cmd = "%s(%s)%s" % (cmd, ", ".join(argnames),
@@ -385,13 +427,13 @@ class MlabWrap(object):
         # got three cases for nout:
         # 0 -> None, 1 -> val, >1 -> [val1, val2, ...]
         if nout == 0:
-            handle_out(pymat.eval(self._session, cmd))
+            handle_out(mlabraw.eval(self._session, cmd))
             if argnames:
-                handle_out(pymat.eval(self._session, "clear('%s');" % "', '".join(argnames)))
+                handle_out(mlabraw.eval(self._session, "clear('%s');" % "', '".join(argnames)))
             return
         # deal with matlab-style multiple value return
         resSL = ((["RES%d__" % i for i in range(nout)]))
-        handle_out(pymat.eval(self._session, '[%s]=%s;' % (", ".join(resSL), cmd)))
+        handle_out(mlabraw.eval(self._session, '[%s]=%s;' % (", ".join(resSL), cmd)))
         res = self._get_values(resSL)
         
         if nout == 1: res = res[0]
@@ -405,8 +447,8 @@ class MlabWrap(object):
     def _get(self, name, remove=False):
         varname = name
         vartype = self._var_type(varname)
-        if vartype in self._pymat_can_convert:
-            var = pymat.get(self._session, varname)
+        if vartype in self._mlabraw_can_convert:
+            var = mlabraw.get(self._session, varname)
             if type(var) is Numeric.ArrayType:
                 if self._flatten_row_vecs and Numeric.shape(var)[0] == 1:
                     var.shape = var.shape[1:2]
@@ -421,22 +463,29 @@ class MlabWrap(object):
                 # cell arrays), in that case just fall back on proxying.
                 try:
                     var = self._manually_convert(varname, vartype)
-                except MLabConversionError: pass
+                except MlabConversionError: pass
             if var is None:
                 # we can't convert this to a python object, so we just
                 # create a proxy, and don't delete the real matlab
                 # reference until the proxy is garbage collected
                 var = self._make_proxy(varname)
         if remove:
-            pymat.eval(self._session, "clear('%s');" % varname)
+            mlabraw.eval(self._session, "clear('%s');" % varname)
         return var
     
     def _set(self, name, value):
-        if isinstance(value, MLabObjectProxy):
-            pymat.eval(self._session, "%s = %s;" % (name, value._name))
+        if isinstance(value, MlabObjectProxy):
+            mlabraw.eval(self._session, "%s = %s;" % (name, value._name))
         else:
-##             pymat.put(self._session, name, self._as_mlabable_type(value))
-            pymat.put(self._session, name, value)
+##             mlabraw.put(self._session, name, self._as_mlabable_type(value))
+            mlabraw.put(self._session, name, value)
+
+    def _make_mlab_command(self, name, nout, doc=None):
+        def mlab_command(*args, **kwargs):
+            return self._do(name, *args, **iupdate({'nout': nout}, kwargs))
+        mlab_command.__doc__ = "\n" + doc
+        return mlab_command
+            
     #XXX this method needs some refactoring, but only after it is clear how
     #things should be done (e.g. what should be extracted from docstrings and
     #how, and how
@@ -445,14 +494,15 @@ class MlabWrap(object):
         object on-the-fly."""
         # print_ -> print
         if attr.startswith('__'): raise AttributeError, attr
-        if attr[-1] == "_": attr = attr[:-1]
-        if self._command_cache.has_key(attr):
-            return self._command_cache[attr]
-        typ = self._do("exist('%s')" % attr)
-        doc = self._do("help('%s')" % attr)
+        assert not attr.startswith('_') # XXX
+        if attr[-1] == "_": name = attr[:-1]
+        else              : name = attr
+        typ = self._do("exist('%s')" % name)
+        doc = self._do("help('%s')" % name)
         if   typ == 0: # doesn't exist
-            raise AttributeError("No such matlab object: %s" % attr)
-        elif typ != 2: # i.e. we have a builtin, mex or similar
+            raise AttributeError("No such matlab object: %s" % name)
+        # i.e. we have a builtin, mex or similar        
+        elif typ != 2:
             # well, obviously matlab doesn't offer much in terms of
             # introspective capabilities for builtins (*completely* unlike
             # python <cough>), but with the aid of a simple regexp, we may
@@ -492,7 +542,7 @@ class MlabWrap(object):
                     \)
                 )
             )
-            """ % attr.upper(), re.X | re.M | re.I)
+            """ % name.upper(), re.X | re.M | re.I)
             match_at = lambda what: match[callSigRE.groupindex[what]-1]
             maxout = 0
             maxin = 0
@@ -513,62 +563,88 @@ class MlabWrap(object):
             if maxout == 0:
                 # an additional HACK for docs that aren't following the
                 # ``foo = bar(...)`` convention
-                # XXX: doesn't work for 'DISPLAY(x) is called...'
-                if re.search(r'\b%s\(.+?\) (?:is|return)' % attr.upper(), doc):
+                # XXX: doesn't work for 'DISPLAY(x) is called...' etc.
+                if re.search(r'\b%s\(.+?\) (?:is|return)' % name.upper(), doc):
                     maxout = 1
             nout = maxout #XXX
             nin  = maxin  #XXX
         else: #XXX should this be ``elif typ == 2:`` ?
-            nout = self._do("nargout('%s')" % attr)
-            nin  = self._do("nargin('%s')" % attr)
-        def mlab_command(*args, **kwargs):
-            # XXX are all `nout>1`s also useable as `nout==1`s?
-            return self._do(attr, *args, **iupdate({'nout': nout and 1}, kwargs))
-        mlab_command.__doc__ = "\n" + doc
-        self._command_cache[attr] = mlab_command
+            nout = self._do("nargout('%s')" % name)
+            nin  = self._do("nargin('%s')" % name)
+        # play it safe only return 1st if nout >= 1
+        # XXX are all ``nout>1``s also useable as ``nout==1``s?
+        nout = nout and 1
+        mlab_command = self._make_mlab_command(name, nout, doc)
+        #!!! attr, *not* name, because we might have python keyword name!
+        setattr(self, attr, mlab_command)
         return mlab_command
         
                  
-import Numeric
-from MLab import rand
-from random import randrange
-def _test_sanity():
-    for i in range(30):
-        if i % 4: # every 4th is a flat vector
-            a = rand(randrange(1,20))
-        else:
-            a = rand(randrange(1,20),randrange(1,20))
-        mlab._set('a', a)
-        try:
-            mlab_a = mlab._get('a')
-            mlab.clear('a')
-            assert Numeric.alltrue(a.flat == mlab_a.flat)
-        except AssertionError:
-            print "A:\n%s\nB:\n%s|n" % (a, mlab._get('a'))
-            raise
-        # the tricky diversity of empty arrays
-        mlab._set('a', [[]])
-        assert `mlab._get('a')` == "zeros((1, 0), 'd')"
-        mlab._set('a', Numeric.zeros((0,0)))
-        assert `mlab._get('a')` == "zeros((0, 0), 'd')"
-        mlab._set('a', [])
-        assert `mlab._get('a')` == "zeros((0, 0), 'd')"
-        mlab._set('a', -2)
-        assert `mlab._get('a')` == "array([       [-2.]])"
-        mlab._set('a', array(-2))
-        assert `mlab._get('a')` == "array([       [-2.]])"
-        mlab.clear('a')
         
-#XXX just to be sure
-#print "STAGE 0"
-#_test_sanity()
     
-#print "STAGE 1"
 mlab = MlabWrap()
-__all__ = ['mlab', 'MlabWrap', 'pymat.error']
-if not sys.modules.get('mlab_direct.mlab'): sys.modules['mlab_direct.mlab'] = mlab
+# XXX fixup the `round` builtin; there might be others that could use a hand
+mlab.round = mlab._make_mlab_command('round', nout=1, doc=mlab.help('round'))
+MlabError = mlabraw.error
+__all__ = ['mlab', 'MlabWrap', 'MlabError']
 
+#FIXME if not sys.modules.get('mlabwrap.mlab'): sys.modules['mlabwrap.mlab'] = mlab
+
+## TESTING CODE
 if __name__ in ("__main__", "__IPYTHON_main__"):
+    def _test_sanity():
+        import Numeric
+        from MLab import rand
+        from random import randrange
+        "This largely tests basic mlabraw conversion functionality"
+        for i in range(30):
+            if i % 4: # every 4th is a flat vector
+                a = rand(randrange(1,20))
+            else:
+                a = rand(randrange(1,20),randrange(1,20))
+            mlab._set('a', a)
+            try:
+                mlab_a = mlab._get('a')
+                mlab.clear('a')
+                assert Numeric.alltrue(a.flat == mlab_a.flat)
+            except AssertionError:
+                print "A:\n%s\nB:\n%s|n" % (a, mlab._get('a'))
+                raise
+            # the tricky diversity of empty arrays
+            mlab._set('a', [[]])
+            assert `mlab._get('a')` == "zeros((1, 0), 'd')"
+            mlab._set('a', Numeric.zeros((0,0)))
+            assert `mlab._get('a')` == "zeros((0, 0), 'd')"
+            mlab._set('a', [])
+            assert `mlab._get('a')` == "zeros((0, 0), 'd')"
+            # 0d
+            mlab._set('a', -2)
+            assert `mlab._get('a')` == "array([       [-2.]])"
+            mlab._set('a', array(-2))
+            assert `mlab._get('a')` == "array([       [-2.]])"
+            # complex 1D
+            mlab._set('a', [1+3j, -4+2j, 6-5j])
+            assert `mlab._get('a')`.replace(" ", "") == "array([[1.+3.j],\n[-4.+2.j],\n[6.-5.j]])"
+            # complex 2D
+            mlab._set('a', [[1+3j, -4+2j, 6+5j], [9+3j, 1, 3-2j]])
+            assert `mlab._get('a')`.replace(" ", "") == 'array([[1.+3.j,-4.+2.j,6.+5.j],\n[9.+3.j,1.+0.j,3.-2.j]])'
+            mlab.clear('a')
+            # try basic error handling
+            try: mlab._set('a', [[[1]]])
+            except TypeError: pass
+            else: assert 0, "wrong exception"
+            try: mlab._get('dontexist')
+            except MlabError: pass
+            else: assert 0, "wrong exception"
+            try: mlab.round()
+            except MlabError, msg:
+                print "FOO", `str(msg).strip()`
+                if str(msg).strip() != 'Error using ==> round\nIncorrect number of inputs.': assert 0
+            else: assert 0, "wrong exception"
+                
+    _test_sanity()
+
+    # test more subtle stuff
     from awmstools import saveVars, loadVars
     array = Numeric.array
     _test_sanity()

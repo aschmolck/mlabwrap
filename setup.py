@@ -47,7 +47,7 @@ setup (# Distribution meta-data
        description = "A low-level interface to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
-       url = "http://alexander.schmolck.org/python/code", 
+       url = "http://alexander.schmolck.org/python/code",
        # Description of the modules and packages in the distribution
        packages = [''],
        package_dir = {'': '.'},
