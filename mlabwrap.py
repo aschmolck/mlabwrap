@@ -156,18 +156,19 @@ See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 __docformat__ = "restructuredtext en"
 __revision__ = "$Revision$"
 __version__ = "0.9b1"
-
-import tempfile
+import warnings
 from pickle import PickleError
 import operator
 import os, sys, re
 import weakref
 import atexit
 import Numeric
+try:               from tempfile import mkstemp          # python >= 2.3
+except ImportError:from tempfile import mktemp as mkstemp
 
 import mlabraw
 
-from awmstools import iupdate,slurpIn, spitOut
+from awmstools import iupdate,slurpIn, spitOut, isString
 from awmsmeta import gensym
 
 #XXX: nested access
@@ -175,6 +176,15 @@ def _flush_write_stdout(s):
     """Writes `s` to stdout and flushes. Default value for ``handle_out``."""
     sys.stdout.write(s); sys.stdout.flush()
 
+class CurlyIndexer(object):
+    """A helper class to mimick ``foo{bar}``-style indexing in python."""
+    def __init__(self, proxy):
+        self.proxy = proxy
+    def __getitem__(self, index):
+        return self.proxy.__getitem__(index, '{}')
+    def __setitem__(self, index, value):
+        self.proxy.__setitem__(index, value, '{}')
+        
 class MlabObjectProxy(object):
     """A proxy class for matlab objects that can't be converted to python
        types.
@@ -194,7 +204,8 @@ class MlabObjectProxy(object):
         self.__dict__['_name'] = name
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
-
+        """To fake matlab's ``obj{foo}`` style indexing."""
+        self.__dict__['_'] = CurlyIndexer(self)
     def __getstate__(self):
         "Experimental pickling support."
         if self.__dict__['_parent']:
@@ -220,7 +231,7 @@ class MlabObjectProxy(object):
         old_name = state['name']
         mlab_name = "UNPICKLED%s__" % gensym('')
         try:
-            tmp_filename = tempfile.mktemp('.mat')
+            tmp_filename = mkstemp('.mat')
             spitOut(state['mlab_contents'], tmp_filename, binary=1)
             mlabraw.eval(mlab._session,
                        "TMP_UNPICKLE_STRUCT__ = load('%s', '%s');" % (
@@ -272,14 +283,30 @@ class MlabObjectProxy(object):
     def __setattr__(self, attr, value):
         self._set_part("%s.%s" % (self._name, attr), value)
     #FIXME: those two only work ok for vectors
-    def __getitem__(self, index):
-        if not isinstance(index, int):
-            raise TypeError("Currently only integer indices are supported.")
-        return self._get_part("%s(%d)" % (self._name, index+1))
-    def __setitem__(self, index, value):
-        if not isinstance(index,int):
-            raise TypeError("Currently only integer indices are supported.")
-        self._set_part("%s(%d)" % (self._name, index+1), value)
+    def _convert_index(self, index):
+        if isinstance(index, int):
+            return str(index + 1)
+        elif isString(index):
+            return "'%s'" % index
+        elif isinstance(index, slice):
+            if index.step != None:
+                raise ValueError("Illegal index for a proxy %r" % index)
+            if index == slice(None,None,None):
+                return ":"
+            else:
+                return '%d:%d' % (slice.start or 0, slice.end)
+        else:
+            raise TypeError("Unsupported index type: %r." % type(index))
+    def __getitem__(self, index, parens='()'):
+        """XXX Semi-finished HACK. Matlab decadently allows overloading *2*
+           different indexing parens, '()' and '{}', hence the 'parens'
+           option."""
+        index = self._convert_index(index)
+        return self._get_part("".join([self._name,parens[0],index,parens[1]]))
+    def __setitem__(self, index, value, parens='()'):
+        index = self._convert_index(index)
+        return self._set_part("".join([self._name,parens[0],index,parens[1]],
+                                      value))
 
 class MlabConversionError(Exception):
     """Raised when a mlab type can't be converted to a python primitive."""
@@ -474,11 +501,13 @@ class MlabWrap(object):
             else:
                 return res
         finally:
-            if self._clear_call_args:
+            if len(tempargs) and self._clear_call_args:
                 mlabraw.eval(self._session, "clear('%s');" %
                              "','".join(tempargs))
     # this is really raw, no conversion of [[]] -> [], whatever
     def _get(self, name, remove=False):
+        # FIXME should this really be needed in normal operation?
+        if name in self._proxies: return self._proxies[name]
         varname = name
         vartype = self._var_type(varname)
         if vartype in self._mlabraw_can_convert:
@@ -520,9 +549,9 @@ class MlabWrap(object):
         mlab_command.__doc__ = "\n" + doc
         return mlab_command
             
-    #XXX this method needs some refactoring, but only after it is clear how
-    #things should be done (e.g. what should be extracted from docstrings and
-    #how, and how)
+    # XXX this method needs some refactoring, but only after it is clear how
+    # things should be done (e.g. what should be extracted from docstrings and
+    # how, and how)
     def __getattr__(self, attr):
         """Magically creates a wapper to a matlab function, procedure or
         object on-the-fly."""
@@ -590,15 +619,6 @@ class MlabWrap(object):
                 #FIXME how are infinite nouts specified in docstrings?
                 if argout:
                     maxout = max(maxout, len(argout.split(',')))
-                argin = match_at('argin')
-                if argin:
-                    if argin.find('...'):
-                        maxin = -1
-                    else:
-                        maxin = max(maxin, len(argin.split(',')))
-                cmdargs = match_at('cmdargs')
-                if cmdargs:
-                    maxin = max(maxin, len(cmdargs.split()))
             if maxout == 0:
                 # an additional HACK for docs that aren't following the
                 # ``foo = bar(...)`` convention
@@ -606,10 +626,17 @@ class MlabWrap(object):
                 if re.search(r'\b%s\(.+?\) (?:is|return)' % name.upper(), doc):
                     maxout = 1
             nout = maxout #XXX
-            nin  = maxin  #XXX
         else: #XXX should this be ``elif typ == 2:`` ?
-            nout = self._do("nargout('%s')" % name)
-            nin  = self._do("nargin('%s')" % name)
+            # XXX should really find out under what conditions this fails,
+            # it's e.g. not clear to me why ``nargout('netcdf')`` won't
+            # work.
+            try:
+                nout = self._do("nargout('%s')" % name)
+            except mlabraw.error, msg:
+                warnings.warn(
+                    "Couldn't ascertain number of output args" + \
+                    "for '%s', assume 1." % name)
+                nout = 1
         # play it safe only return 1st if nout >= 1
         # XXX are all ``nout>1``s also useable as ``nout==1``s?
         nout = nout and 1
