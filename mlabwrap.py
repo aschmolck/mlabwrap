@@ -500,7 +500,7 @@ class MlabWrap(object):
             
     #XXX this method needs some refactoring, but only after it is clear how
     #things should be done (e.g. what should be extracted from docstrings and
-    #how, and how
+    #how, and how)
     def __getattr__(self, attr):
         """Magically creates a wapper to a matlab function, procedure or
         object on-the-fly."""
@@ -608,9 +608,11 @@ __all__ = ['mlab', 'MlabWrap', 'MlabError']
 #FIXME if not sys.modules.get('mlabwrap.mlab'): sys.modules['mlabwrap.mlab'] = mlab
 
 ## TESTING CODE
+# this test code is an ugly mess, but it tests quite a bit
 if __name__ in ("__main__", "__IPYTHON_main__"):
     def _test_sanity():
         import Numeric
+        array = Numeric.array
         from MLab import rand
         from random import randrange
         "This largely tests basic mlabraw conversion functionality"
@@ -618,12 +620,17 @@ if __name__ in ("__main__", "__IPYTHON_main__"):
             if i % 4: # every 4th is a flat vector
                 a = rand(randrange(1,20))
             else:
-                a = rand(randrange(1,20),randrange(1,20))
-            mlab._set('a', a)
+                a = rand(randrange(1,3),randrange(1,3))
             try:
-                mlab_a = mlab._get('a')
-                mlab.clear('a')
-                assert Numeric.alltrue(a.flat == mlab_a.flat)
+                mlab._set('a', a)
+                assert `a` == `mlab._get('a')`
+                # make sure strides also work OK!
+                mlab._set('a', a[::-2])
+                assert `a[::-2]` == `mlab._get('a')`
+                if len(a.shape) > 1:
+                    mlab._set('a', a[0:-3:3,::-1])
+                    assert `a[0:-3:3,::-1]` == `mlab._get('a')`
+                mlab.clear('a')                
             except AssertionError:
                 print "A:\n%s\nB:\n%s|n" % (a, mlab._get('a'))
                 raise
@@ -646,18 +653,18 @@ if __name__ in ("__main__", "__IPYTHON_main__"):
             mlab._set('a', [[1+3j, -4+2j, 6+5j], [9+3j, 1, 3-2j]])
             assert `mlab._get('a')`.replace(" ", "") == 'array([[1.+3.j,-4.+2.j,6.+5.j],\n[9.+3.j,1.+0.j,3.-2.j]])'
             mlab.clear('a')
-            # try basic error handling
-            try: mlab._set('a', [[[1]]])
-            except TypeError: pass
-            else: assert 0, "wrong exception"
-            try: mlab._get('dontexist')
-            except MlabError: pass
-            else: assert 0, "wrong exception"
-            try: mlab.round()
-            except MlabError, msg:
-                print "FOO", `str(msg).strip()`
-                if str(msg).strip() != 'Error using ==> round\nIncorrect number of inputs.': assert 0
-            else: assert 0, "wrong exception"
+        # try basic error handling
+        try: mlab._set('a', [[[1]]])
+        except TypeError: pass
+        else: assert 0, "wrong exception"
+        try: mlab._get('dontexist')
+        except MlabError: pass
+        else: assert 0, "wrong exception"
+        try: mlab.round()
+        except MlabError, msg:
+            print "FOO", `str(msg).strip()`
+            if str(msg).strip() != 'Error using ==> round\nIncorrect number of inputs.': assert 0
+        else: assert 0, "wrong exception"
                 
     _test_sanity()
 
