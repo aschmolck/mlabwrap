@@ -1,0 +1,36 @@
+## NumPy and Python header locations
+NUMPY = /usr/include/python1.5
+
+## python module install site
+PYMODINST = /usr/lib/python1.5/site-packages
+
+## matlab header and lib locations
+MATLAB = /usr/local/lib/matlab
+MATLABLIB = $(MATLAB)/extern/lib/lnx86
+MATLINK = -L$(MATLABLIB) -leng -lmx -lmat -lmi -lut
+MATINC = -I/usr/include -I$(MATLAB)/extern/include  -I$(NUMPY)
+
+## for libc5 compatability (Matlab libs are linked to old libc5)
+OLDLIBS = /usr/lib/libc5-compat
+OLDLIBLINK = -L$(OLDLIBS) -lstdc++ -lc -lm
+
+## for testing pymat module: set LD_LIBRARY_PATH to include 
+## libc5 and matlab lib dirs before runing test script
+LD_LIB =  $(LD_LIBRARY_PATH):$(MATLABLIB):$(OLDLIBS)
+
+## ---------------------------------------------------------------
+
+pymatmodule.so: pymat.o
+	g++ -shared -o pymatmodule.so pymat.o $(MATLINK) $(OLDLIBLINK)
+
+pymat.o: pymat.cpp
+	g++  -c pymat.cpp -o pymat.o $(MATINC) 
+
+clean:
+	rm -f pymatmodule.so pymat.o
+
+install: pymatmodule.so
+	install -c pymatmodule.so $(PYMODINST)
+
+test: pymatmodule.so
+	 LD_LIBRARY_PATH=$(LD_LIB) pymat-test.py

@@ -1,0 +1,312 @@
+<HTML>
+<HEAD>
+  <META NAME="GENERATOR" CONTENT="Adobe PageMill 3.0 Win">
+  <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+  <META HTTP-EQUIV="Description" CONTENT="
+BEGIN PYTHON-PACKAGE-INFO 1.0
+Current-Version:        1.02
+Title:                  PyMat - Python to MATLAB Interface
+Home-page:              http://claymore.engineer.gvsu.edu/~steriana/Python
+Description:            Glue module to connect NumPy arrays to a MATLAB workspace
+Keywords:               MATLAB NumPy
+Author:                 Andrew Sterian, mailto:steriana@gvsu.edu
+Maintained-by:          The author
+Primary-site:           http://claymore.engineer.gvsu.edu/~steriana/Python/pymat.zip
+Alternate-site:         None
+Original-site:          Same as primary site
+Platform:               Unix/Windows
+Copying-policy:         Free software, see copyright info below for details
+Difficulty-rating:      Low on Win32, some installation required on Unix
+System-requirements:    Windows: Pentium
+Software-requirements:  MATLAB 5, NumPy, Python 1.5
+
+The package exposes the MATLAB engine interface allowing Python
+programs to start, close, and communicate with a MATLAB engine
+session. In addition, the package allows transferring matrices
+to and from an MATLAB workspace. These matrices can be specified
+as NumPy arrays, allowing a blend between the mathematical
+capabilities of NumPy and those of MATLAB.
+
+An example module is included (pyplot) that wraps some of MATLAB's
+plotting functions, allowing for simple plots of NumPy arrays.
+
+END PYTHON-PACKAGE-INFO
+">
+  <TITLE>PyMat -- Python to MATLAB Interface</TITLE>
+</HEAD>
+<BODY BGCOLOR="#ffffff" LINK="#0000c0" VLINK="#8f008f">
+
+<!-- -->
+
+<P><FONT SIZE="+2">PyMat - An interface between Python and MATLAB</FONT></P>
+
+<P><HR ALIGN=LEFT><TABLE WIDTH="100%" BORDER="0" CELLSPACING="2"
+CELLPADDING="0">
+  <TR>
+    <TD>
+    <FONT SIZE="-1"><A HREF="#Functions">Functions</A> | <A HREF="#Limitations">Limitations</A>
+    | <A HREF="#Examples">Examples</A> | <A HREF="#Installation">Installation</A>
+    | <A HREF="#Copyright">Copyright</A> | <A HREF="#Todo">To Do</A>
+    | <A HREF="#History">History</A></FONT></TD> 
+    <TD ALIGN="RIGHT">
+    <FONT SIZE="-1">Version 1.02<BR>
+    July 9, 1999</SMALL</TD></FONT></TD> 
+  </TR>
+</TABLE><HR ALIGN=LEFT></P>
+
+<H2>Introduction</H2>
+
+<UL>
+  <P><A HREF="ftp://ftp-icf.llnl.gov/pub/python/README.html">NumPy</A>
+  is a set of numerical extensions for Python that introduces a
+  multidimensional array type and a rich set of matrix operations
+  and mathematical functions. Users who have MATLAB 5 installed,
+  however, may wish to take advantage of some of MATLAB's additional
+  functions, including the plotting interface. The PyMat module
+  acts as an interface between NumPy arrays in Python and a MATLAB
+  engine session, allowing arrays to be passed back and forth and
+  arbitrary commands to be executed in the MATLAB workspace.
+  <P>PyMat is usable on both UNIX and Win32 platforms, although
+  there are some slight differences between the two (mainly due
+  to MATLAB's limitations).
+  <P>You can download the latest version of PyMat from:
+  <P><CENTER><A HREF="http://claymore.engineer.gvsu.edu/~steriana/Python"><CODE>http://claymore.engineer.gvsu.edu/~steriana/Python</CODE></A></CENTER>
+</UL>
+
+<P><A NAME="Functions"></A></P>
+
+<H2>Functions</H2>
+
+<UL>
+  <DL>
+    <DT><CODE>open([startcmd])</CODE>
+    <DD>This function starts a MATLAB engine session and returns
+    a handle that is used to identify the session to all other PyMat
+    functions. The handle is of integer type.
+    <P>On the Win32 platform, the optional parameter <CODE>startcmd</CODE>
+    is always ignored. On UNIX platforms, it indicates the method
+    of starting MATLAB. Quoting from the documentation for the <CODE>engOpen</CODE>
+    function from the MATLAB API reference manual:
+    <P><BLOCKQUOTE>On UNIX systems, if <CODE>startcmd</CODE> is NULL
+    or the empty string, <CODE>engOpen</CODE> starts MATLAB on the
+    current host using the command <CODE>matlab</CODE>. If <CODE>startcmd</CODE>
+    is a host-name, <CODE>engOpen</CODE> starts MATLAB on the designated
+    host by embedding the specified hostname string into the larger
+    string: </BLOCKQUOTE>
+    <P><CENTER><CODE>&quot;rsh hostname \&quot;/bin/csh -c 'setenv
+    DISPLAY hostname:0; matlab'\&quot;&quot;</CODE></CENTER>
+    <P><BLOCKQUOTE>If <CODE>startcmd</CODE> is any other string (has
+    white space in it, or nonalphanumeric characters), the string
+    is executed literally to start MATLAB.
+    <P>On UNIX systems, <CODE>engOpen</CODE> performs the following
+    steps:
+    <OL>
+      <LI>Creates two pipes.
+      <LI>Forks a new process and sets up the pipes to pass stdin and
+      stdout from MATLAB (parent) to two file descriptors in the engine
+      program (child).
+      <LI>Executes a command to run MATLAB (<CODE>rsh</CODE> for remote
+      execution).
+    </OL>
+    <P>Under Windows on a PC, <CODE>engOpen</CODE> opens an ActiveX
+    channel to MATLAB. This starts the MATLAB that was registered
+    during installation. If you did not register during installation,
+    on the command line you can enter the command: </BLOCKQUOTE>
+    <P><CENTER><CODE>matlab /regserver</CODE></CENTER>
+    <DT><CODE>close(handle)</CODE>
+    <DD>This function closes the MATLAB session represented by <CODE>handle</CODE>.
+    <DT><CODE>eval(handle, string)</CODE>
+    <DD>This function evaluates the given string in the MATLAB workspace.
+    Essentially, it is as if you had typed the string directly in
+    MATLAB's command window.
+    <P>Note that this function always succeeds without any exceptions
+    unless the handle is invalid, <B><I>even if the evaluation failed
+    in the MATLAB workspace!</I></B>. You are responsible for verifying
+    successful execution of your code.
+    <DT><CODE>get(handle, name)</CODE>
+    <DD>This function retrieves a matrix from MATLAB's workspace
+    and returns a NumPy array with the same shape and contents. The
+    <CODE>name</CODE> parameter specifies the name of the array in
+    MATLAB's workspace.
+    <P>Currently, only one-dimensional and two-dimensional floating-point
+    arrays (real or complex) are supported. Structures, cell arrays,
+    multi-dimensional arrays, etc. are not yet supported. On UNIX
+    systems, this function can also be used to retrieve character
+    strings, in which case a Python string object is returned. This
+    functionality is not supported on Win32 (due to MATLAB restrictions).
+    <DT><CODE>put(handle, name, data)</CODE>
+    <DD>This function places a Python object into MATLAB's workspace
+    under the given name. The <CODE>data</CODE> parameter can be
+    one of three things:
+    <OL>
+      <LI>A NumPy array -- in this case, an array of the same shape
+      and contents will be placed into the MATLAB workspace. The MATLAB
+      array will be in double-precision format (real or complex), converting
+      from the NumPy array type as necessary. Only one-dimensional
+      or two-dimensional NumPy arrays are supported.
+      <LI>A Python list or tuple containing numeric values. In this
+      case, a NumPy object is created from the list or tuple (as if
+      you were using NumPy's <CODE>array()</CODE> function) and that
+      object is instantiated in MATLAB's workspace.
+      <LI>A Python string object. In this case, a MATLAB character
+      array will be instantiated with the contents of the string.
+    </OL>
+  </DL>
+</UL>
+
+<P><A NAME="Limitations"></A></P>
+
+<H2>Limitations</H2>
+
+<UL>
+  <P>The following limitations apply to the current version of
+  PyMat:
+  <OL>
+    <LI>Only 1-D and 2-D double-precision (real or complex) MATLAB
+    arrays are supported (and single character strings). Matrices
+    of higher dimension, structure arrays, cell arrays, etc. are
+    not yet supported.
+    <LI>The Win32 platform does not support retrieving character
+    strings from the MATLAB workspace.
+  </OL>
+</UL>
+
+<P><A NAME="Examples"></A></P>
+
+<H2>Examples</H2>
+
+<UL>
+  <P>Here is a simple example that computes the Discrete Cosine
+  Transform of a short NumPy array using MATLAB's <CODE>dct</CODE>
+  function:</P>
+<PRE>
+&gt;&gt;&gt; import pymat
+&gt;&gt;&gt; from Numeric import * 
+&gt;&gt;&gt; x = array([1, 2, 3, 4, 5, 6]) 
+&gt;&gt;&gt; H = pymat.open() 
+&gt;&gt;&gt; pymat.put(H, 'x', x) 
+&gt;&gt;&gt; pymat.eval(H, 'y = dct(x)') 
+&gt;&gt;&gt; print pymat.get(H, 'y') 
+    [ 8.57321410e+00 -4.16256180e+00 -1.55403172e-15 -4.08248290e-01 -1.88808530e-15 -8.00788912e-02] 
+&gt;&gt;&gt; pymat.close(H)
+</PRE>
+</UL>
+
+<P><A NAME="Installation"></A></P>
+
+<H2>Installation</H2>
+
+<UL>
+  <OL>
+    <LI>Win32
+    <P>Simply place the <CODE>pymat.pyd</CODE> file somewhere on
+    your Python search path. Also ensure that MATLAB's <CODE>BIN</CODE>
+    directory is somewhere on your DOS path, or else that you have
+    copied MATLAB's <CODE>LIBENG.DLL</CODE> and <CODE>LIBMX.DLL</CODE>
+    files somewhere on this path.<BR></P>
+    <LI>Unix
+    <P>Add the <CODE>pymat.cpp</CODE> file to your <CODE>Modules</CODE>
+    source subdirectory. You may need to rename <CODE>pymat.cpp</CODE>
+    to <CODE>pymat.cc</CODE> so that C++ compilers will recognize
+    the extension.
+    <P>You will need to add a line to your <CODE>Modules/Setup</CODE>
+    file to indicate the presence of this new module. You will need
+    to specify <CODE>-I</CODE> switches on this line to tell the
+    compiler where to look for MATLAB's <CODE>engine.h</CODE> include
+    file (usually in the <CODE>extern/include</CODE> subdirectory
+    of the MATLAB root installation directory) and NumPy's <CODE>arrayobject.h</CODE>
+    include file. You will also need the <CODE>-L</CODE> switch to
+    indicate the location of MATLAB's shared libraries, and <CODE>-l</CODE>
+    switches to include those libraries. For example, my line in
+    the <CODE>Modules/Setup</CODE> file looks like this:
+    <P><BLOCKQUOTE><PRE>pymat pymat.cc -I$(prefix)/include -I$(matlab)/extern/include
+    -I$(numpy)/Include -L$(matlab)/extern/lib/lnx86 -leng -lmx -lmat
+    -lmi -lut </PRE></BLOCKQUOTE>
+    <P>When recompiling Python you may need to manually specify a
+    C++ compiler. For example, I found that I had to do the following:
+    <P><CENTER><PRE>make CCC=g++ </PRE></CENTER>
+    <P>Finally, you need to set an environment variable telling MATLAB
+    where it can find its shared libraries. On most systems, this
+    variable is <CODE>LD_LIBRARY_PATH</CODE>. On HP700 systems this
+    variable is <CODE>SHLIB_PATH</CODE>. On IBM RS/6000 systems this
+    variable is <CODE>LIBPATH</CODE>.
+    <P>Note that some makefiles are included in the PyMat distribution
+    that may simplify this process.</P>
+  </OL>
+</UL>
+
+<P><A NAME="Copyright"></A></P>
+
+<H2>Copyright &amp; Disclaimer</H2>
+
+<UL>
+  <P>Copyright &COPY; 1998,1999 Andrew Sterian. All Rights Reserved.
+  mailto: <A HREF="mailto:steriana@gvsu.edu?subject=pymat">steriana@gvsu.edu</A>
+  <P>Copyright &COPY; 1998,1999 THE REGENTS OF THE UNIVERSITY OF
+  MICHIGAN. ALL RIGHTS RESERVED
+  <P>Permission to use, copy, modify, and distribute this software
+  and its documentation for any purpose and without fee is hereby
+  granted, provided that the above copyright notices appear in
+  all copies and that both these copyright notices and this permission
+  notice appear in supporting documentation, and that the name
+  of The University of Michigan not be used in advertising or publicity
+  pertaining to distribution of the software without specific,
+  written prior permission.
+  <P>THIS SOFTWARE IS PROVIDED AS IS, WITHOUT REPRESENTATION AS
+  TO ITS FITNESS FOR ANY PURPOSE, AND WITHOUT WARRANTY OF ANY KIND,
+  EITHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION THE IMPLIED
+  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+  THE REGENTS OF THE UNIVERSITY OF MICHIGAN SHALL NOT BE LIABLE
+  FOR ANY DAMAGES, INCLUDING SPECIAL, INDIRECT, INCIDENTAL, OR
+  CONSEQUENTIAL DAMAGES, WITH RESPECT TO ANY CLAIM ARISING OUT
+  OF OR IN CONNECTION WITH THE USE OF THE SOFTWARE, EVEN IF IT
+  HAS BEEN OR IS HEREAFTER ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+</UL>
+
+<P><A NAME="Todo"></A></P>
+
+<H2>To Do</H2>
+
+<UL>
+  <OL>
+    <LI>Add multidimensional and non-double-precision array support.
+    This will be of no benefit to Win32 users since the MATLAB engine
+    interface only supports MATLAB V4 data types (double-precision
+    floating point 2D arrays and strings).
+    <LI>Add support for structures and cell matrices?
+    <LI>The pyplot module could be the beginning of a true plotting
+    module using MATLAB as the back end.
+  </OL>
+</UL>
+
+<P><A NAME="History"></A></P>
+
+<H2>History</H2>
+
+<UL>
+  <P>Version 1.02 -- July 9, 1999
+  <UL>
+    <LI>Added <TT>makefile.sol2</TT> file for compilation on Solaris
+    2. Thanks to Jeffrey Chang for this contribution.
+    <LI>Added more functionality to the <TT>pyplot.py</TT> file.
+  </UL>
+  <P>Version 1.01 -- March 2, 1999
+  <UL>
+    <LI>Added <TT>pymat-test.py</TT> as a basic test.
+    <LI>Added <TT>makefile.libc5</TT> file to aid compilation on
+    Linux with glibc (since MATLAB's shared libraries were compiled
+    with libc5). Thanks to Les Schaffer for both of the above contributions.
+  </UL>
+  <P>Version 1.0 -- December 26, 1998
+  <UL>
+    <LI>Initial release
+  </UL>
+</UL>
+
+<HR ALIGN=LEFT>
+
+<P><CENTER><FONT SIZE="-1">&COPY; 1998-1999, Copyright by Andrew
+Sterian; All Rights Reserved. mailto: <A HREF="mailto:steriana@gvsu.edu?subject=pymat">steriana@gvsu.edu</A></FONT></CENTER>
+
+</BODY>
+</HTML>
