@@ -64,14 +64,18 @@ Limitations
 
 Tested under matlab v6r12 and python2.2.1.
 
-See the docu of `MLabDirect`. 
+See the docu of `MlabWrap`. 
 """
 
 __version__ = "$Revision$"
 
+# perform black magic
+
+
 from __future__ import generators
 import tempfile
 from pickle import PickleError
+import operator
 import os, sys, re
 import Numeric
 import pymat
@@ -80,8 +84,6 @@ import atexit
 
 from awmstools import DEBUG_P, iupdate, magicGlobals, slurpIn, spitOut, prin
 from awmsmeta import gensym
-DEBUG = 0
-DEBUG_P = lambda *x,**y:None
 #XXX: nested access
 
 def _flush_write_stdout(s):
@@ -187,11 +189,11 @@ class MLabObjectProxy(object):
         self._set_part("%s.%s" % (self._name, attr), value)
     #FIXME: those two only works ok for vectors
     def __getitem__(self, index):
-        if not type(index) is int:
+        if not isinstance(index, int):
             raise TypeError("Currently only integer indices are supported.")
         return self._get_part("%s(%d)" % (self._name, index+1))
     def __setitem__(self, index, value):
-        if not type(index) is int:
+        if not isinstance(index,int):
             raise TypeError("Currently only integer indices are supported.")
         self._set_part("%s(%d)" % (self._name, index+1), value)
 
@@ -199,7 +201,7 @@ class MLabConversionError(Exception):
     """Raised when a mlab type can't be converted to a python primitive."""
     pass
     
-class MLabDirect(object):
+class MlabWrap(object):
     """This implements a powerful and simple to use wrapper that makes using
     matlab(tm) from python almost completely transparent. To use simply do:
     
@@ -216,7 +218,7 @@ class MLabDirect(object):
 
     N.B.: The result here is a 1x3 matrix (and not a flat lenght 3 array) of
     type double (and not int), as matlab built around matrices of type double
-    (see `MLabDirect._flatten_row_vecs`).
+    (see `MlabWrap._flatten_row_vecs`).
 
     MLab, unlike python has multiple value returns. To emulate calls like
     ``[a,b] = sort([3,2,1])`` just do:
@@ -237,7 +239,7 @@ class MLabDirect(object):
     things, then get raw with ``mlab._do``, or build your child class that
     handles what you want.
     """
-    
+    __all__ = [] #XXX a hack, so that this class can fake a module
     def __init__(self):
         """Create a new matlab(tm) wrapper object.
         """
@@ -278,7 +280,6 @@ class MLabDirect(object):
 ##                                        for fv in fieldvalues])
         
     def _var_type(self, varname):
-        DEBUG_P("", (("varname", varname),))
         pymat.eval(self._session, "TMP_CLS__ = class(%s);" % varname) #FIXME for funcs we would need ''s
         res_type = pymat.get(self._session, "TMP_CLS__")
         pymat.eval(self._session, "clear TMP_CLS__;")
@@ -296,18 +297,18 @@ class MLabDirect(object):
         self._proxies[proxy_val_name] = res
         return res
 
-    def _as_mlabable_type(self, arg):
-        if   isinstance(arg, (int, float, long, complex)):
-            #pymat.eval(self._session, '%s=%r;' % (argnames[-1], arg))
-            return Numeric.array([arg])
-            #FIXME what about unicode and other seq-thingies?
-        if isinstance(arg, (Numeric.ArrayType, list, tuple, str)):
-            return arg
-        else:
-            try:
-                return arg.__array__()
-            except AttributeError:
-                raise TypeError("Unsuitable argument type: %s" % type(arg))
+    ## this should be obsoleted by the changes to pymat
+##     def _as_mlabable_type(self, arg):
+##         # that should now be handled by pymat...
+##         if   isinstance(arg, (int, float, long, complex)):
+##             return Numeric.array([arg])
+##         if operator.isSequenceType(arg):
+##             return arg
+##         else:
+##             try:
+##                 return arg.__array__()
+##             except AttributeError:
+##                 raise TypeError("Unsuitable argument type: %s" % type(arg))
     def _get_cell(self, varname):
         # XXX can currently only handle 1D
         pymat.eval(self._session,
@@ -322,7 +323,6 @@ class MLabDirect(object):
                        (",".join(cell_bits), varname))
             # !!! this recursive call means we have to take care with
             # overwriting temps!!!
-            DEBUG_P("", (("cell_bits", cell_bits), ("varname", varname),))
             return self._get_values(cell_bits)
         else:
             raise MLabConversionError("Not a 1D cell array")
@@ -358,7 +358,6 @@ class MLabDirect(object):
 
         XXX: should we add `parens` parameter?
         """
-        DEBUG_P("", (("cmd", cmd), ("args", args), ("kwargs", kwargs),))
         handle_out = kwargs.get('handle_out', _flush_write_stdout)
         #self._session = self._session or pymat.open()
         # HACK        
@@ -366,7 +365,6 @@ class MLabDirect(object):
             pymat.eval(self._session,  'cd %s;' % os.getcwd())
         nout =  kwargs.get('nout', 1)
         #XXX what to do with matlab screen output
-        DEBUG_P("", (("nout", nout),))
         argnames = []
         for arg, count in zip(args, xrange(sys.maxint)):
             if isinstance(arg, MLabObjectProxy):
@@ -374,11 +372,11 @@ class MLabDirect(object):
             else:
                 argnames.append('arg%d__' % count)
                 # have to convert these by hand
-                try:
-                    arg = self._as_mlabable_type(arg)
-                except TypeError:
-                    raise TypeError("Illegal argument type (%s.:) for %d. argument" %
-                                    (type(arg), type(count)))
+##                 try:
+##                     arg = self._as_mlabable_type(arg)
+##                 except TypeError:
+##                     raise TypeError("Illegal argument type (%s.:) for %d. argument" %
+##                                     (type(arg), type(count)))
                 pymat.put(self._session,  argnames[-1], arg)
 
         if args:
@@ -393,8 +391,6 @@ class MLabDirect(object):
             return
         # deal with matlab-style multiple value return
         resSL = ((["RES%d__" % i for i in range(nout)]))
-        #DEBUG_P("", (("resSL", resSL), ("cmd", cmd),))
-        #print ("", (("resSL", resSL), ("cmd", cmd),))
         handle_out(pymat.eval(self._session, '[%s]=%s;' % (", ".join(resSL), cmd)))
         res = self._get_values(resSL)
         
@@ -413,7 +409,6 @@ class MLabDirect(object):
             var = pymat.get(self._session, varname)
             if type(var) is Numeric.ArrayType:
                 if self._flatten_row_vecs and Numeric.shape(var)[0] == 1:
-                    DEBUG_P("", (("Numeric.shape(var)", Numeric.shape(var)),))
                     var.shape = var.shape[1:2]
                 elif self._flatten_col_vecs and Numeric.shape(var)[1] == 1:
                     var.shape = var.shape[0:1]
@@ -431,18 +426,17 @@ class MLabDirect(object):
                 # we can't convert this to a python object, so we just
                 # create a proxy, and don't delete the real matlab
                 # reference until the proxy is garbage collected
-                DEBUG_P("funny res", ())
                 var = self._make_proxy(varname)
         if remove:
             pymat.eval(self._session, "clear('%s');" % varname)
         return var
     
     def _set(self, name, value):
-        DEBUG_P("", (("name", name), ("value", value),))
         if isinstance(value, MLabObjectProxy):
             pymat.eval(self._session, "%s = %s;" % (name, value._name))
         else:
-            pymat.put(self._session, name, self._as_mlabable_type(value))
+##             pymat.put(self._session, name, self._as_mlabable_type(value))
+            pymat.put(self._session, name, value)
     #XXX this method needs some refactoring, but only after it is clear how
     #things should be done (e.g. what should be extracted from docstrings and
     #how, and how
@@ -450,6 +444,7 @@ class MLabDirect(object):
         """Magically creates a wapper to a matlab function, procedure or
         object on-the-fly."""
         # print_ -> print
+        if attr.startswith('__'): raise AttributeError, attr
         if attr[-1] == "_": attr = attr[:-1]
         if self._command_cache.has_key(attr):
             return self._command_cache[attr]
@@ -502,7 +497,6 @@ class MLabDirect(object):
             maxout = 0
             maxin = 0
             for match in callSigRE.findall(doc[doc.find("\n"):]):
-                DEBUG_P("", (("match", match),))
                 argout = match_at('argout')
                 #FIXME how are infinite nouts specified in docstrings?
                 if argout:
@@ -534,16 +528,16 @@ class MLabDirect(object):
         self._command_cache[attr] = mlab_command
         return mlab_command
         
-mlab = MLabDirect()
-__all__ = ['mlab', 'MLabDirect', 'pymat.error']
-
                  
 import Numeric
 from MLab import rand
 from random import randrange
 def _test_sanity():
     for i in range(30):
-        a = rand(randrange(1,20),randrange(1,20))
+        if i % 4: # every 4th is a flat vector
+            a = rand(randrange(1,20))
+        else:
+            a = rand(randrange(1,20),randrange(1,20))
         mlab._set('a', a)
         try:
             mlab_a = mlab._get('a')
@@ -552,12 +546,28 @@ def _test_sanity():
         except AssertionError:
             print "A:\n%s\nB:\n%s|n" % (a, mlab._get('a'))
             raise
+        # the tricky diversity of empty arrays
+        mlab._set('a', [[]])
+        assert `mlab._get('a')` == "zeros((1, 0), 'd')"
+        mlab._set('a', Numeric.zeros((0,0)))
+        assert `mlab._get('a')` == "zeros((0, 0), 'd')"
+        mlab._set('a', [])
+        assert `mlab._get('a')` == "zeros((0, 0), 'd')"
+        mlab._set('a', -2)
+        assert `mlab._get('a')` == "array([       [-2.]])"
+        mlab._set('a', array(-2))
+        assert `mlab._get('a')` == "array([       [-2.]])"
+        mlab.clear('a')
+        
 #XXX just to be sure
 #print "STAGE 0"
-_test_sanity()
+#_test_sanity()
     
-DEBUG = 0
 #print "STAGE 1"
+mlab = MlabWrap()
+__all__ = ['mlab', 'MlabWrap', 'pymat.error']
+if not sys.modules.get('mlab_direct.mlab'): sys.modules['mlab_direct.mlab'] = mlab
+
 if __name__ in ("__main__", "__IPYTHON_main__"):
     from awmstools import saveVars, loadVars
     array = Numeric.array
@@ -610,3 +620,5 @@ if __name__ in ("__main__", "__IPYTHON_main__"):
     assert x[0] == 'hallo\n'
     assert mlab.who() == ['HOME', 'bar']
     mlab._optionally_convert['cell'] = False
+
+
