@@ -5,10 +5,12 @@
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
 ## o created: 2002-05-29 21:51:59+00:40
 ## o last modified: $Date$
-## o version: 0.5
+## o version: see `__version__`
 ## o keywords: matlab wrapper
 ## o license: MIT
 ## o FIXME:
+##   - `_dont_proxy` and `_manually_convert` sound similar but are
+##     quite different so think of better names
 ##   - add test that defunct proxy-values are culled from matlab workspace
 ##     (for some reason ipython seems to keep them alive somehwere, even after
 ##     a zaphist, should find out what causes that!)
@@ -323,10 +325,10 @@ class MlabWrap(object):
         self._proxy_count = 0
         self._mlabraw_can_convert = ('double', 'char')
         """The matlab(tm) types that mlabraw will automatically convert for us."""
-        self._optionally_convert = {'cell' : False}
+        self._dont_proxy = {'cell' : False}
         """The matlab(tm) types we can handle ourselves with a bit of
            effort. To turn on autoconversion for e.g. cell arrays do:
-           ``mlab._optionally_convert["cell"] = True``."""
+           ``mlab._dont_proxy["cell"] = True``."""
     def __del__(self):
         mlabraw.close(self._session)
     def _format_struct(self, varname):
@@ -373,13 +375,17 @@ class MlabWrap(object):
 ##             except AttributeError:
 ##                 raise TypeError("Unsuitable argument type: %s" % type(arg))
     def _get_cell(self, varname):
-        # XXX can currently only handle 1D
+        # XXX can currently only handle ``{}`` and 1D cells
         mlabraw.eval(self._session,
                    "TMP_SIZE_INFO__ = \
-                   [min(size(%(vn)s)) == 1 & ndims(%(vn)s) == 2, \
-                   max(size(%(vn)s))];" % {'vn':varname})
-        is_rank1, cell_len = self._get("TMP_SIZE_INFO__", remove=True).flat
-        if is_rank1:
+                   [all(size(%(vn)s) == 0), \
+                    min(size(%(vn)s)) == 1 & ndims(%(vn)s) == 2, \
+                    max(size(%(vn)s))];" % {'vn':varname})
+        is_empty, is_rank1, cell_len = map(int,
+                                           self._get("TMP_SIZE_INFO__", remove=True).flat)
+        if is_empty:
+            return []
+        elif is_rank1:
             cell_bits = (["TMP%i%s__" % (i, gensym('_'))
                            for i in range(cell_len)])
             mlabraw.eval(self._session, '[%s] = deal(%s{:});' %
@@ -492,7 +498,7 @@ class MlabWrap(object):
                     var = self._array_cast(var)
         else:
             var = None
-            if self._optionally_convert.get(vartype):
+            if self._dont_proxy.get(vartype):
                 # manual conversions may fail (e.g. for multidimensional
                 # cell arrays), in that case just fall back on proxying.
                 try:
