@@ -5,6 +5,8 @@
   Revision History
   ----------------
 
+  Version 1.1 -- 2002-08-19 Alexander Schmolck (a.schmolck@gmx.net)
+
   Version 1.0 -- December 26, 1998, Andrew Sterian (asterian@umich.edu)
      * Initial release
 */
@@ -31,6 +33,8 @@
 #define max(x,y) ((x) > (y) ? (x) : (y))
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #endif
+
+static PyObject* pymat_error = PyErr_NewException("pymat.error", NULL, NULL);
 
 static void pyGenericError(PyObject *pException, const char *fmt, ...)
 {
@@ -67,7 +71,8 @@ static PyStringObject *mx2char(const mxArray *pArray)
     pyassert(buf, "Out of MATLAB memory");
 
     if (mxGetString(pArray, buf, buflen)) {
-        pyGenericError(PyExc_RuntimeError, "Unable to extract MATLAB string");
+        // pyGenericError(PyExc_RuntimeError, "Unable to extract MATLAB string");
+        pyGenericError(pymat_error, "Unable to extract MATLAB string");
         mxFree(buf);
         return 0;
     }
@@ -94,7 +99,7 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
 
     nd = mxGetNumberOfDimensions(pArray);
     if (nd > 2) {
-        pyGenericError(PyExc_RuntimeError, "Only 1-D and 2-D arrays are currently supported");
+        pyGenericError(pymat_error, "Only 1-D and 2-D arrays are currently supported");
         return 0;
     }
 
@@ -187,7 +192,7 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 
     switch (pSrc->descr->type_num) {
     case PyArray_OBJECT:
-        pyGenericError(PyExc_RuntimeError, "Non-numeric array types not supported");
+        pyGenericError(pymat_error, "Non-numeric array types not supported");
         return 0;
         
     case PyArray_CFLOAT:
@@ -304,7 +309,7 @@ static mxArray *char2mx(const PyObject *pSrc)
 
     lDst = mxCreateString(PyString_AsString(const_cast<PyObject *>(pSrc)));
     if (lDst EQ 0) {
-        pyGenericError(PyExc_RuntimeError, "Unable to create MATLAB string");
+        pyGenericError(pymat_error, "Unable to create MATLAB string");
         return 0;
     }
 
@@ -348,7 +353,7 @@ PyObject * pymat_open(PyObject *, PyObject *args)
     ep = engOpen(lStr);
 #endif
     if (ep EQ 0) {
-        pyGenericError(PyExc_RuntimeError, "Unable to start MATLAB engine");
+        pyGenericError(pymat_error, "Unable to start MATLAB engine");
         return 0;
     }
 
@@ -371,7 +376,7 @@ PyObject * pymat_close(PyObject *, PyObject *args)
 	if (! PyArg_ParseTuple(args, "i:close", &lHandle)) return 0;
 
     if (engClose((Engine *)lHandle) NEQ 0) {
-        pyGenericError(PyExc_RuntimeError, "Unable to close session");
+        pyGenericError(pymat_error, "Unable to close session");
         return 0;
     }
 
@@ -391,7 +396,6 @@ static char eval_doc[] =
 "MATLAB WORKSPACE!\n"
 ;
 
-//FIXME: this should really be PyString
 PyObject * pymat_eval(PyObject *, PyObject *args)
 {
   //FIXME how large should this be? Should we allocate a permanent buffer?
@@ -408,7 +412,7 @@ PyObject * pymat_eval(PyObject *, PyObject *args)
     buffer = (char *)mxCalloc(BUFSIZE, sizeof(char));
     engOutputBuffer((Engine *)lHandle, buffer, BUFSIZE-1);
     if (engEvalString((Engine *)lHandle, lStr) NEQ 0) {
-        pyGenericError(PyExc_RuntimeError, "Unable to evaluate string in MATLAB workspace");
+        pyGenericError(pymat_error, "Unable to evaluate string in MATLAB workspace");
         return 0;
     }
     //printf("###DEBUG result of engEvalString is\n%s\n", buffer);
@@ -418,11 +422,16 @@ PyObject * pymat_eval(PyObject *, PyObject *args)
     // succesful... AAARGH
     if (strstr(buffer, ">> ??? ") EQ buffer) {
       //puts("###DEBUG mlab_error");
-      pyGenericError(PyExc_RuntimeError, buffer);
+      pyGenericError(pymat_error, buffer);
       mxFree(buffer); //FIXME: is that right?
       return 0;
     }
-    ret = (PyObject *)PyString_FromString(buffer);
+    // AWMS XXX skip first three chars of prompt
+    if (strcmp(">> ", buffer) <= 0)
+      retStr = buffer + 3;
+    else
+      retStr = buffer;
+    ret = (PyObject *)PyString_FromString(retStr);
     mxFree(buffer);
     return ret;
 ;
@@ -455,7 +464,7 @@ PyObject * pymat_get(PyObject *, PyObject *args)
 
     lArray = engGetArray((Engine *)lHandle, lName);
     if (lArray EQ 0) {
-        pyGenericError(PyExc_RuntimeError, "Unable to get matrix from MATLAB workspace");
+        pyGenericError(pymat_error, "Unable to get matrix from MATLAB workspace");
         return 0;
     }
 
@@ -464,7 +473,7 @@ PyObject * pymat_get(PyObject *, PyObject *args)
     } else if (mxIsDouble(lArray)) {
         lDest = (PyObject *)mx2numeric(lArray);
     } else {
-        pyGenericError(PyExc_RuntimeError, "Only floating-point and character arrays are currently supported");
+        pyGenericError(pymat_error, "Only floating-point and character arrays are currently supported");
     }
     mxDestroyArray(lArray);
 
@@ -508,7 +517,7 @@ PyObject * pymat_put(PyObject *, PyObject *args)
     mxSetName(lArray, lName);
 
     if (engPutArray((Engine *)lHandle, lArray) NEQ 0) {
-        pyGenericError(PyExc_RuntimeError, "Unable to put matrix into MATLAB workspace");
+        pyGenericError(pymat_error, "Unable to put matrix into MATLAB workspace");
         mxDestroyArray(lArray);
         return 0;
     }
@@ -554,4 +563,5 @@ void initpymat(void)
     PyObject *item = PyString_FromString(PYMAT_VERSION);
     PyDict_SetItemString(dict, "__version__", item);
     Py_XDECREF(item);
+    PyDict_SetItemString(dict, "error", pymat_error); /* AWMS XXX is that right? */
 }
