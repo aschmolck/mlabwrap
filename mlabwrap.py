@@ -11,6 +11,7 @@
 ##   - is there a way to get ``display(x)`` as a string (apart from using
 ##     diary?)
 ## o XXX:
+##   - nested proxies should be cached.
 ##   - better error reporting: test for number of input args etc.
 ##   - allow switching between Numeric arrays an my wonderful matrix class
 ##   - autosync_dirs is a bit of a hack...
@@ -69,7 +70,7 @@ class MLabObjectProxy(object):
         self.__dict__['_parent'] = parent
     def __repr__(self):
         return "<%s of matlab-class: %r; internal name: %r; has parent: %s>" % (
-            type(self).__name__, self._mlab_direct._do("class('%s')"),
+            type(self).__name__, self._mlab_direct._do("class(%s)" % self._name),
             self._name, ['no', 'yes'][bool(self._parent)])
             #AARGH there seems to be no sane way to 'display' to a string...
             #self._mlab_direct._do("display(%s)" % self._name))
@@ -79,14 +80,22 @@ class MLabObjectProxy(object):
     def _get_part(self, to_get):
         if self._mlab_direct._can_convert(to_get):
             DEBUG_P("getting", (("to_get", to_get),))
-            pymat.eval(self._mlab_direct._session, "TMP_VAL=%s" % to_get)
-            return self._mlab_direct._get("TMP_VAL", remove=True)
+            pymat.eval(self._mlab_direct._session, "TMP_VAL__=%s" % to_get)
+            return self._mlab_direct._get("TMP_VAL__", remove=True)
         else:
             return type(self)(self._mlab_direct, to_get, self)
+    def _set_part(self, to_set, value):
+        if isinstance(value, MLabObjectProxy):
+            pymat.eval(self._mlab_direct._session, "%s = %s" % (to_set, value._name))
+        else:
+            self._mlab_direct._set("TMP_VAL__", value)
+            pymat.eval(self._mlab_direct._session, "%s = TMP_VAL__ " % to_set)
+            pymat.eval(self._mlab_direct._session, 'clear TMP_VAL__')
+        
     def __getattr__(self, attr):
         return self._get_part("%s.%s" % (self._name, attr))
     def __setattr__(self, attr, value):
-        self._mlab_direct._set("%s.%s" % (self._name, attr), value)
+        self._set_part("%s.%s" % (self._name, attr), value)
     def __getitem__(self, index):
         if not type(index) is int:
             raise TypeError("Currently only integer indices are supported.")
@@ -94,7 +103,7 @@ class MLabObjectProxy(object):
     def __setitem__(self, index, value):
         if not type(index) is int:
             raise TypeError("Currently only integer indices are supported.")
-        self._mlab_direct._set("%s(%d)" % (self._name, index+1), value)
+        self._set_part("%s(%d)" % (self._name, index+1), value)
 
     
 class MLabDirect(object):
@@ -160,8 +169,7 @@ class MLabDirect(object):
     def _make_proxy(self, varname):
         """Creates a proxy for a variable.
 
-        This doesn't have to deal with nested proxies -- only the root of a
-        nested non-pythonable project is created with this method.
+        XXX create and cache nested proxies also here.
         """
         proxy_val_name = "PROXY_VAL%d__" % len(self._proxies)
         pymat.eval(self._session, "%s = %s" % (proxy_val_name, varname))
@@ -216,6 +224,8 @@ class MLabDirect(object):
                 except TypeError:
                     raise TypeError("Illegal argument type (%s) for %d. argument" %
                                     (type(arg), type(count)))
+                pymat.put(self._session,  argnames[-1], arg)
+
         if args:
             cmd = "%s(%s)" % (cmd, ", ".join(argnames))
         # got three cases for nout:
@@ -236,8 +246,8 @@ class MLabDirect(object):
 ##             pymat.eval(self._session, "TMP__ = isempty(%s)" % resSL):
 ##             if pymat.get("TMP__")[0]:
 ##                 res.append(pymat...
-            pymat.eval(self._session, "clear('TMP__')")
-            DEBUG_P("determining res type", ())            
+##             pymat.eval(self._session, "clear('TMP__')")
+            DEBUG_P("determining res type", ())
             if self._can_convert(resS):
                 resPart = pymat.get(self._session, resS)
                 if self.array_cast and type(resPart) is Numeric.ArrayType:
@@ -266,6 +276,7 @@ class MLabDirect(object):
             pymat.eval(self._session, "clear %s" % name)
         return res
     def _set(self, name, value):
+        DEBUG_P("", (("name", name), ("value", value),))
         if isinstance(value, MLabObjectProxy):
             pymat.eval(self._session, "%s = %s" % (name, value._name))
         else:
@@ -348,6 +359,7 @@ class MLabDirect(object):
             if maxout == 0:
                 # an additional HACK for docs that aren't following the
                 # ``foo = bar(...)`` convention
+                # XXX: doesn't work for 'DISPLAY(x) is called...'
                 if re.search(r'\b%s\(.+?\) (?:is|return)' % attr.upper(), doc):
                     maxout = 1
             nout = maxout #XXX
@@ -365,8 +377,13 @@ class MLabDirect(object):
 #mlab = MLabDirect()
 __all__ = MLabDirect
 if __name__ == "__main__":
-    DEBUG = 3
+    #DEBUG = 1
     mlab = MLabDirect()
+    assert mlab.sort(1) == Numeric.array([1.])
+    assert mlab.sort([3,1,2]) == Numeric.array([1., 2., 3.])
+    assert mlab.sort(Numeric.array([3,1,2])) == Numeric.array([1., 2., 3.])
     sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
     print sct
-    sct[1].x  = 3    
+    assert sct[1].x == 4
+    sct[1].x  = 3
+    assert sct[1].x == 3
