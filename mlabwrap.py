@@ -8,11 +8,8 @@
 ## o keywords: matlab wrapper
 ## o license: LGPL
 ## o TODO:
-##   - issues to deal with: return casts (ints can only be passed as
-##     arrays etc)., multiple value returns, special commands...
-##   - assignment commands should be guessed as nout=0 automatically
-## o FIXME:
-##   - proxy and nested access
+##   - is there a way to get ``display(x)`` as a string (apart from using
+##     diary?)
 ## o XXX:
 ##   - better error reporting: test for number of input args etc.
 ##   - allow switching between Numeric arrays an my wonderful matrix class
@@ -31,11 +28,18 @@ More precisely, a wrapper around a wrapper:  Andrew Sterian's pymat
 
 Limitations
     - The return values of the matlab functions must be 2D or 1D arrays or
-      strings (Well, there is some support for arbitrary matlab classes, but
-      that is rather experimental, so don't complain if horrible things
-      happen:)
-    - There isn't proper error handling, because the underlying pymat doesn't
-      have proper error handling either.
+      strings (Well, there is support for arbitrary matlab classes for which
+      proxy objects are created, but that is experimental, so don't complain
+      if horrible things happen:)
+      
+    - There isn't good error handling, because the underlying pymat doesn't
+      have good error handling either.
+      
+    - Matlab doesn't know scalars, so array([1]) and [1] are the same.
+      Consequently all functions where on might expect a scalar to be returned
+      will return a 1x1 array instead. However, unlike in pymat (where they
+      cause segfaults), scalars are automatically converted to arrays where
+      necessary.
 
 Tested under matlab v6r12 and python2.2.1, but should also work for earlier
 versions.
@@ -61,51 +65,36 @@ class MLabObjectProxy(object):
     def __init__(self, mlab_direct, name, parent=None):
         self.__dict__['_mlab_direct'] = mlab_direct
         self.__dict__['_name'] = name
+        """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
     def __repr__(self):
-        return "%s of matlab class:%s internal _name:%s %_parent: %s\n" % (
-            type(self).___name__, self._mlab_direct._do("class('%s')"),
-            self._name, self._parent,
-            self._mlab_direct._do("display(%s)" % self._name))
+        return "<%s of matlab-class: %r; internal name: %r; has parent: %s>" % (
+            type(self).__name__, self._mlab_direct._do("class('%s')"),
+            self._name, ['no', 'yes'][bool(self._parent)])
+            #AARGH there seems to be no sane way to 'display' to a string...
+            #self._mlab_direct._do("display(%s)" % self._name))
     def __del__(self):
-        #XXX is that OK?
         if not self._parent:
             pymat.eval(self._mlab_direct._session, 'clear %s' % self._name)
-    def __getattr__(self, attr):
-        pymat.eval(self._mlab_direct.session, "TMP_VAL=%s.%s" % (self._name, attr))
-        if self._mlab_direct._can_convert("TMP_VAL"):
+    def _get_part(self, to_get):
+        if self._mlab_direct._can_convert(to_get):
+            DEBUG_P("getting", (("to_get", to_get),))
+            pymat.eval(self._mlab_direct._session, "TMP_VAL=%s" % to_get)
             return self._mlab_direct._get("TMP_VAL", remove=True)
         else:
-            return self._mlab_direct._make_proxy("TMP_VAL", self)
-        else:
-            return getattr(self._parent, "%s.%s" % (self._name, attr))
+            return type(self)(self._mlab_direct, to_get, self)
+    def __getattr__(self, attr):
+        return self._get_part("%s.%s" % (self._name, attr))
     def __setattr__(self, attr, value):
-        if not self._parent:
-            self._mlab_direct._set("%s.%s" % (self._name, attr), value)
-        else:
-            setattr(self._parent, "%s.%s" % (self._name, attr), value)
+        self._mlab_direct._set("%s.%s" % (self._name, attr), value)
     def __getitem__(self, index):
         if not type(index) is int:
             raise TypeError("Currently only integer indices are supported.")
-        if not self._parent:
-            pymat.eval(self._mlab_direct.session, "TMP_VAL=%s(%d)" % (self._name, index+1))
-            if self._mlab_direct._can_convert("TMP_VAL"):
-                return self._mlab_direct._get("TMP_VAL", remove=True)
-            else:
-                return self._mlab_direct._make_proxy("TMP_VAL", self)
-        else:
-            return getattr(self._parent, "%s(%d)" % (self._name, index+1))
+        return self._get_part("%s(%d)" % (self._name, index+1))
     def __setitem__(self, index, value):
         if not type(index) is int:
             raise TypeError("Currently only integer indices are supported.")
-        if not self._parent:
-            self._mlab_direct._set("%s(%d)" % (self._name, index+1), value)
-        else:
-            setattr(self._parent, "%s(%d)" % (self._name, index+1), value)
-        pymat.put(self._mlab_direct._session, "TMP_VAL__", value)
-        pymat.eval(self._mlab_direct._session, "%s(%d) = TMP_VAL__" % (self._name, index+1))
-        pymat.eval(self._mlab_direct._session, "clear TMP_VAL__")
-
+        self._mlab_direct._set("%s(%d)" % (self._name, index+1), value)
 
     
 class MLabDirect(object):
@@ -161,6 +150,7 @@ class MLabDirect(object):
     def __del__(self):
         pymat.close(self._session)
     def _can_convert(self, varname):
+        DEBUG_P("", (("varname", varname),))
         pymat.eval(self._session, "TMP_CLS__ = class(%s)" % varname) #FIXME for funcs we would need ''s
         res_type = pymat.get(self._session, "TMP_CLS__")
         pymat.eval(self._session, "clear TMP_CLS__")
@@ -168,13 +158,26 @@ class MLabDirect(object):
         # strings
         return res_type in self._convertable
     def _make_proxy(self, varname):
-        proxy_val_name = "PROXY_VAL%d___" % len(self._proxies)
+        """Creates a proxy for a variable.
+
+        This doesn't have to deal with nested proxies -- only the root of a
+        nested non-pythonable project is created with this method.
+        """
+        proxy_val_name = "PROXY_VAL%d__" % len(self._proxies)
         pymat.eval(self._session, "%s = %s" % (proxy_val_name, varname))
         res = MLabObjectProxy(self, proxy_val_name)
-        self._proxies[proxy_val_name] = weakref.ref(res)
+        self._proxies[proxy_val_name] = res
         return res
-        #return MLabObjectProxy(self, parent._name + varname, parent)         #FIXME
 
+    def _as_mlabable_type(self, arg):
+        if   isinstance(arg, (int, float, long, complex)):
+            #pymat.eval(self._session, '%s=%r' % (argnames[-1], arg))
+            return Numeric.array([arg])
+            #FIXME what about unicode and other seq-thingies?
+        if isinstance(arg, (Numeric.ArrayType, list, tuple, str)):
+            return arg
+        else:
+            raise TypeError("Unsuitable argument type: %s" % type(arg))
     def _do(self, cmd, *args, **kwargs):
         """Semi-raw execution of a matlab command.
         
@@ -194,6 +197,7 @@ class MLabDirect(object):
 
         XXX: should we add `parens` parameter?
         """
+        DEBUG_P("", (("cmd", cmd), ("args", args), ("kwargs", kwargs),))
         self._session = self._session or pymat.open()
         # HACK        
         if self.autosync_dirs:
@@ -203,16 +207,13 @@ class MLabDirect(object):
         argnames = []
         for arg, count in zip(args, xrange(sys.maxint)):
             if isinstance(arg, MLabObjectProxy):
-                argnames.append(MLabObjectProxy.name)
+                argnames.append(MLabObjectProxy._name)
             else:
                 argnames.append('arg%d__' % count)
                 # have to convert these by hand
-                if   isinstance(arg, (int, float, long, complex)):
-                    pymat.eval(self._session, '%s=%r' % (argnames[-1], arg))
-                #FIXME what about unicode and other seq-thingies?
-                elif isinstance(arg, (Numeric.ArrayType, list, tuple, str)):
-                    pymat.put(self._session,  argnames[-1], arg)
-                else:
+                try:
+                    arg = self._as_mlabable_type(arg)
+                except TypeError:
                     raise TypeError("Illegal argument type (%s) for %d. argument" %
                                     (type(arg), type(count)))
         if args:
@@ -229,7 +230,6 @@ class MLabDirect(object):
         DEBUG_P("", (("resSL", resSL), ("cmd", cmd),))
         pymat.eval(self._session, '[%s]=%s' % (", ".join(resSL), cmd))
         res = []
-        to_clear = []
         for resS in resSL:
             #FIXME: this should be fixed in the c++ sources
 ##             HACK zeros(0,1) etc. incorrectly returns array([1.])
@@ -260,19 +260,19 @@ class MLabDirect(object):
             return kwargs['cast'](res)
         else:
             return res
-    def _get(self, name):
-        pymat.eval(self._session, "TMP_VAL__ = %s" % name)
-        if self._can_convert("TMP_VAL__"):
-            res = pymat.get(self._session, "TMP_VAL__")
-        else:
-            res = self._make_proxy("TMP_VAL__")
-        pymat.eval(self._session, "clear TMP_VAL__")
+    def _get(self, name, remove=False):
+        res = pymat.get(self._session, name)
+        if remove:
+            pymat.eval(self._session, "clear %s" % name)
         return res
     def _set(self, name, value):
         if isinstance(value, MLabObjectProxy):
-            pymat.eval(self._session, "%s = %s" % (name, self.value._name))
+            pymat.eval(self._session, "%s = %s" % (name, value._name))
         else:
-            pymat.put(self._session, name, value)
+            pymat.put(self._session, name, self._as_mlabable_type(value))
+    #XXX this method needs some refactoring, but only after it is clear how
+    #things should be done (e.g. what should be extracted from docstrings and
+    #how, and how
     def __getattr__(self, attr):
         """Magically creates a wapper to a matlab function, procedure or
         object on-the-fly."""
@@ -351,7 +351,7 @@ class MLabDirect(object):
                 if re.search(r'\b%s\(.+?\) (?:is|return)' % attr.upper(), doc):
                     maxout = 1
             nout = maxout #XXX
-            nin  = maxin
+            nin  = maxin  #XXX
         else: #XXX should this be ``elif typ == 2:`` ?
             nout = self._do("nargout('%s')" % attr)
             nin  = self._do("nargin('%s')" % attr)
@@ -365,5 +365,8 @@ class MLabDirect(object):
 #mlab = MLabDirect()
 __all__ = MLabDirect
 if __name__ == "__main__":
+    DEBUG = 3
     mlab = MLabDirect()
-    #sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
+    sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
+    print sct
+    sct[1].x  = 3    
