@@ -65,7 +65,8 @@ else:
             guess = os.path.dirname(os.popen('which matlab').read()).\
                     replace('/bin','') or \
                     filter(None,
-                           map(glob.glob, ['/usr/local/matlab*',
+                           map(glob.glob, ['/Applications/MATLAB*', #OS X
+                                           '/usr/local/matlab*',
                                            '/opt/matlab*']))[0][0]
         except:
             print >> sys.stderr("FAILED GUESSING MATLAB_DIR, assume default")
@@ -83,6 +84,8 @@ please edit setup.py by hand and set MATLAB_DIR
         PLATFORM_DIR = PLATFORM_DIR or "sol2"
     elif sys.platform.startswith('linux'):
         PLATFORM_DIR = PLATFORM_DIR or "glnx86"
+    elif sys.platform.startswith('darwin'):
+        PLATFORM_DIR = PLATFORM_DIR or "mac"
 
 if MATLAB_VERSION >= 7:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/bin/" + PLATFORM_DIR]
@@ -95,7 +98,7 @@ else:
     DEFINE_MACROS = None
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "0.9b3",
+       version = "0.9",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
