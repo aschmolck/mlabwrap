@@ -173,7 +173,7 @@ See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
-__version__ = "0.9b3"
+__version__ = "0.9.1"
 __author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
 import warnings
 from pickle import PickleError

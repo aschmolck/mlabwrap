@@ -1,12 +1,11 @@
 ===============
-mlabwrap v0.9b3
+mlabwrap v0.9.1
 ===============
 
 :copyright: 2003,2004,2005 Alexander Schmolck
-:date: 2005-01-21
+:date: 2005-05-03
 
 .. contents:: 
-
 
 Description
 -----------
@@ -36,6 +35,9 @@ an unusual location, you'll have to edit ``setup.py`` (if that's the case and
 you think its not specific to your particular installation, please share your
 improvements with me). If the install proceeds but you get errors on
 importing, see Troubleshooting.
+
+Although I myself use only linux, mlabwrap should work on python>=2.3, matlab
+6,6.5,7 unix(tm), OS X (tm) and windoze (see `OS X`)
 
 Documentation
 -------------
@@ -121,7 +123,7 @@ directly converted, matlab functions can also return structs or indeed
 classes and other types that cannot be converted into python
 equivalents. However, rather than just giving up, mlabwrap just hides
 this fact from the user by using proxies:
-E.g. to create a netlab neural net with 2 input, 3 hidden and 1 output node:
+E.g. to create a netlab_ neural net with 2 input, 3 hidden and 1 output node:
 
 >>> net = mlab.mlp(2,3,1,'logistic')
 
@@ -201,6 +203,15 @@ Plus, there is virtually no error-reporting at all, if something goes wrong in
 the `eval` step, you'll only notice because the subsequent `get` mysteriously
 fails.
 
+However *should* you need fast (i.e. C calls only) low-level access, then that
+is equally available (and *with* error reporting); basically just replace
+``pymat`` with ``mlabraw`` above and use ``mlab._session`` as session), i.e
+
+>>> from mlabwrap import mlab
+>>> import mlabraw
+>>> pymat.put(mlab._session, [[1,2], [1,3]], "X")
+[...]
+
 
 What's Missing?
 ---------------
@@ -217,8 +228,8 @@ What's Missing?
   the time nor the need)
 
 
-Implemenation Notes
--------------------
+Implementation Notes
+--------------------
 
 So how does it all work?
 
@@ -258,9 +269,6 @@ Then you're presumably using an old version of matlab (i.e. < 6.5), so you'll
 have to edit ``setup.py`` and change ``VERSION_6_5_OR_LATER=1`` to
 ``VERSION_6_5_OR_LATER=0``.
 
-
-VERSION_6_5_OR_LATER=1
-
 Library path not set
 ''''''''''''''''''''
 
@@ -283,22 +291,81 @@ running linux and that the libraries are in
 3. Or, ugly but also works: just copy or symlink all the libraries to
    ``/usr/lib`` or something else that's in your library path.
 
+
+OS X
+''''
+
+Josh Marshall tried it under OS X and sent me the following notes (thanks!).
+
+Notes on running
+................
+
+- Before running python, run::
+
+      export  DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH$:/Applications/MATLAB701/bin/mac/
+      export MLABRAW_CMD_STR=/Applications/MATLAB701/bin/matlab
+
+- As far as graphics commands go, the python interpreter will need to  be run
+  from within the X11 xterm to be able to display anything to the  screen.
+  ie, the command for lazy people
+
+  >>> from mlabwrap import mlab; mlab.plot([1,2,3],'-o')
+
+  won't work unless python is run from an xterm, and the matlab startup
+  string is
+  changed to::
+
+      export MLABRAW_CMD_STR="/Applications/MATLAB701/bin/matlab -nodesktop"
+
+Windows
+'''''''
+
+I'm thankfully not using windows myself, but I try to keep mlabwrap working
+under windows, for which I depend on the feedback from windows users. 
+
+Most recently, just when I was worried by reports that 0.9 versions no longer
+built succesfully under windows Joris van Zwieten sent me a patch to setup.py
+(thanks!); which I've tweaked it a little bit. I've had confirmation from
+another user that it worked for him out-of-the box, but please have a look at
+setup.py you might need to adjust some parameters depending on your
+configuration.
+
+
+Support and Feedback
+--------------------
+
+Private email is OK, but the preferred way is via the recently established
+`project mailing list`_
+
+.. _project mailing list:
+   http://lists.sourceforge.net/lists/listinfo/mlabwrap-user
+
+
+
 Download
 --------
 
 <http://sourceforge.net/projects/mlabwrap/>
+
+(P.S. the activity stats are bogus -- look at the release dates).
 
 
 Credits
 -------
 
 Andrew Sterian for writing pymat without which this module would never have
-existed.
+existed. 
+
+I'm only using linux myself -- so I gratefully acknowledge the help of Windows
+and OS X users to get things running smoothly under these OSes as well.
 
 Matlab is a registered trademark of `The Mathworks`_.
 
 .. _The Mathworks: 
    http://www.mathworks.com
+
+.. _netlab:
+   http://www.ncrg.aston.ac.uk/netlab/
 
 .. image:: http://sourceforge.net/sflogo.php?group_id=124293&amp;type=5
    :alt: sourceforge-logo

@@ -21,9 +21,15 @@ PYTHON_INCLUDE_DIR=None     # where to find Numeric/*.h
 
 SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already 
                                            # installed
-
 # DON'T FORGET TO DO SOMETHING LIKE:
 #   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/MATLAB_DIR/extern/lib/glnx86/
+
+########################### WINDOWS ONLY ###########################
+# only needed for Windows Visual Studio (tm) build
+# (adjust if necessary if you use a different version/path of VC)
+VC_DIR='C:/Program Files/Microsoft Visual Studio .NET 2003/vc7'
+# NOTE: You'll also need to adjust PLATFORM_DIR accordingly 
+
 ####################################################################
 ### NO MODIFICATIONS SHOULD BE NECESSARY BEYOND THIS POINT       ###
 ####################################################################
@@ -36,7 +42,10 @@ if sys.version_info < (2,2):
     sys.exit(1)
 
 # windows
+WINDOWS=False
 if sys.platform.startswith('win'):
+    WINDOWS=True
+    EXTENSION_NAME = 'mlabraw'
     MATLAB_LIBRARIES = MATLAB_LIBRARIES or 'libeng libmx'.split()
     CPP_LIBRARIES = [] #XXX shouldn't need CPP libs for windoze
     print >> sys.stderr, "WINDOZE INSTALL UNTESTED: best of luck!"
@@ -49,11 +58,12 @@ ERROR: CAN'T FIND MATLAB DIR
 please edit setup.py by hand and set MATLAB_DIR
 """
             sys.exit(1)
-    PLATFORM_DIR = PLATFORM_DIR or 'win32/microsoft/msvc60'
+    PLATFORM_DIR = PLATFORM_DIR or 'win32/microsoft/msvc71/'
 # unices
 else:
+    EXTENSION_NAME = 'mlabrawmodule'
     if not MATLAB_LIBRARIES:
-        if MATLAB_VERSION >= 7:
+        if MATLAB_VERSION >= 6.5:
             MATLAB_LIBRARIES = 'eng mx mat ut'.split()
         else:
             MATLAB_LIBRARIES = 'eng mx mat mi ut'.split()
@@ -87,24 +97,28 @@ please edit setup.py by hand and set MATLAB_DIR
     elif sys.platform.startswith('darwin'):
         PLATFORM_DIR = PLATFORM_DIR or "mac"
 
-if MATLAB_VERSION >= 7:
+if MATLAB_VERSION >= 7 and not WINDOWS:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/bin/" + PLATFORM_DIR]
 else:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/extern/lib/" + PLATFORM_DIR]
 MATLAB_INCLUDE_DIRS = [MATLAB_DIR + "/extern/include"] #, "/usr/include"
+if sys.platform.startswith('win'):
+     MATLAB_LIBRARY_DIRS += [VC_DIR + "/lib"]
+     MATLAB_INCLUDE_DIRS += [VC_DIR + "/include", VC_DIR + "/PlatformSDK/include"]
 if MATLAB_VERSION >= 6.5:
     DEFINE_MACROS = [('_V6_5_OR_LATER',1)]
 else:
     DEFINE_MACROS = None
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "0.9",
+       version = "0.9.1",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
        py_modules = ["mlabwrap"] + SUPPORT_MODULES,
+       url='http://mlabwrap.sourceforge.net',
        ext_modules = [
-           Extension('mlabrawmodule', ['mlabraw.cpp'],
+          Extension(EXTENSION_NAME, ['mlabraw.cpp'],
               define_macros=DEFINE_MACROS,
               library_dirs=MATLAB_LIBRARY_DIRS ,
               libraries=MATLAB_LIBRARIES + CPP_LIBRARIES,

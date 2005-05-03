@@ -25,12 +25,19 @@ try:
     TestSuite = awmstest.RotatingTestSuite
 except ImportError: pass
 
-from awmstools import indexme
+from awmstools import indexme, without
 from mlabwrap import *
 
 #XXX for testing in running session with existing mlab
 ## mlab
-## mlab = MlabWrap() 
+## mlab = MlabWrap()
+mlab._dont_proxy['cell'] = True
+WHO_AT_STARTUP = mlab.who()
+mlab._dont_proxy['cell'] = False
+# FIXME should do this differentlya
+funnies = without(WHO_AT_STARTUP, ['HOME', 'V', 'WLVERBOSE'])
+if funnies:
+    print >> sys.stderr, "Hmm, got some funny stuff in matlab env: %s" % funnies
 
 #FIXME both below untested
 def fitString(s, maxCol=79, newlineReplacement="\\n"):
@@ -252,13 +259,7 @@ class mlabwrapTC(NumericTestCase):
         self.assertRaises(MlabError, mlab.svd, sct)
         self.assertEqual(mlab.size(sct, [2]), array([[2]]))
         mlab._dont_proxy['cell'] = True
-        # XXX got no idea where HOME comes from, not there under win
-        theWho = mlab.who()
-        print "###DEBUG", theWho
-        # FIXME should do this differentlya
-        for boring in ['HOME', 'V', 'WLVERBOSE']:
-            theWho.remove(boring)
-        assert theWho == (['PROXY_VAL0__', 'PROXY_VAL1__'])
+        assert without(mlab.who(), WHO_AT_STARTUP) == (['PROXY_VAL0__', 'PROXY_VAL1__'])
         # test pickling
         pickleFilename = mktemp()
         f = open(pickleFilename, 'wb')
@@ -343,7 +344,7 @@ import gc
 gc.collect()
 mlab._dont_proxy['cell'] = True
 # XXX got no idea where HOME comes from, not there under win
-assert mlab.who() in (['HOME', 'bar'], ['bar'])
+assert without(mlab.who(), WHO_AT_STARTUP) == ['bar']
 mlab.clear()
 assert mlab.who() == [] == mlab._do('{}')
 mlab._dont_proxy['cell'] = False
