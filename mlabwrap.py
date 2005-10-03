@@ -142,7 +142,7 @@ Fine points and limitations
     mlab._autosync_dirs = False
 
 - you can customize how matlab is called by setting the environment variable
-  ``MLABRAW_CMD_STR``.
+  ``MLABRAW_CMD_STR`` (useful options ).
 
 - if you don't want to use Numeric arrays, but something else that's fine
   too::
@@ -366,9 +366,10 @@ class MlabWrap(object):
         memory used up by the arguments will remain unreclaimed till
         overwritten."""
         self._session = mlabraw.open(os.getenv("MLABRAW_CMD_STR", ""))
+        atexit.register(lambda handle=self._session: mlabraw.close(handle))
+        self._proxies = weakref.WeakValueDictionary()
         """Use ``mlab._proxies.values()`` for a list of matlab object's that
         are currently proxied."""
-        self._proxies = weakref.WeakValueDictionary()
         self._proxy_count = 0
         self._mlabraw_can_convert = ('double', 'char')
         """The matlab(tm) types that mlabraw will automatically convert for us."""
@@ -481,9 +482,9 @@ class MlabWrap(object):
         """
         handle_out = kwargs.get('handle_out', _flush_write_stdout)
         #self._session = self._session or mlabraw.open()
-        # HACK        
+        # HACK
         if self._autosync_dirs:
-            mlabraw.eval(self._session,  'cd %s;' % os.getcwd())
+            mlabraw.eval(self._session,  "cd('%s');" % os.getcwd().replace("'", "''"))
         nout =  kwargs.get('nout', 1)
         #XXX what to do with matlab screen output
         argnames = []
