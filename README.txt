@@ -1,9 +1,9 @@
-===============
-mlabwrap v0.9.1
-===============
+==============
+mlabwrap v1.0a
+==============
 
-:copyright: 2003,2004,2005 Alexander Schmolck
-:date: 2005-05-03
+:copyright: 2003-2007 Alexander Schmolck
+:date: 2007-01-29
 
 .. contents:: 
 
@@ -16,6 +16,13 @@ python library.
 .. _matlab(tm): 
    http://www.mathworks.com
 
+News
+----
+
+2007-01-29: After some longer release hiatus version 1.0a brings numpy_ and
+64-bit compatibility as well as improved ``setup.py``; however this is still
+an *alpha* version; memory violations and other nasty things may happen!
+
 License
 -------
 
@@ -25,19 +32,23 @@ license, see the mlabraw.cpp.
 Installation
 ------------
 
-If you're lucky (linux; matlab **v6.5 or 7** with its libraries installed and
-**in the library path**)::
+If you're lucky (linux, matlab binary in ``PATH`` and the matlab libraries in
+``LD_LIBRARY_PATH``)
 
   python setup.py install
 
-If not, for example if your version is < **v6.5** or you installed matlab in
-an unusual location, you'll have to edit ``setup.py`` (if that's the case and
-you think its not specific to your particular installation, please share your
-improvements with me). If the install proceeds but you get errors on
-importing, see Troubleshooting.
+If the matlab libraries are not in your ``LD_LIBRARY_PATH`` the above command
+will print out a message how to rectify this (you will need to enter something
+like ``export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/MatlabR14/bin/glnx86`` in
+the shell (assuming you're using bash or zsh); and adding that line to your
+``~/.bashrc`` (or equivalent) is presumably a good idea).
 
-Although I myself use only linux, mlabwrap should work on python>=2.3, matlab
-6,6.5,7 unix(tm), OS X (tm) and windoze (see `OS X`)
+If things do go awry, see `Troubleshooting`.
+
+Although I myself use only linux, mlabwrap should work with python>=2.3 (even
+python 2.2, with minor coaxing) and either numpy_ (recommended) or Numeric
+(obsolete) installed and matlab 6, 6.5 or 7 under unix(tm), OS X (tm) and
+windows (see `OS X`) on 32- or 64-bit machines.
 
 Documentation
 -------------
@@ -47,6 +58,15 @@ Documentation
 
   .. image:: ugly-plot.png
      :alt: ugly-plot
+
+- a slightly prettier example
+
+  >>> from mlabwrap import mlab; from numpy import *
+  >>> xx = arange(-2*pi, 2*pi, 0.2)
+  >>> mlab.surf(subtract.outer(sin(xx),cos(xx)))
+
+  .. image:: surface-plot.png
+     :alt: surface-plot
 
 - for a complete description:
   see the doc_ dir or just run ``pydoc mlabwrap``
@@ -70,7 +90,7 @@ Numeric:
 
 
 >>> from mlabwrap import mlab
->>> import Numeric
+>>> import numpy
 
 Now you want to find out what the right function is, so you simply do:
 
@@ -259,15 +279,13 @@ source.
 Troubleshooting
 ---------------
 
-Old Matlab version
+Matlab not in path
 ''''''''''''''''''
-If you get something like this on ``python setup.py install``::
+``setup.py`` will call ``matlab`` in an attempt to query the version and other
+information relevant for installation, so it has to be in your ``PATH``
+*unless* you specify everything by hand in ``setup.py``. Of course to be able
+to use ``mlabwrap`` in any way ``matlab`` will have to be in your path anyway.
 
- mlabraw.cpp:634: `engGetVariable' undeclared (first use this function)
-
-Then you're presumably using an old version of matlab (i.e. < 6.5), so you'll
-have to edit ``setup.py`` and change ``VERSION_6_5_OR_LATER=1`` to
-``VERSION_6_5_OR_LATER=0``.
 
 Library path not set
 ''''''''''''''''''''
@@ -278,18 +296,49 @@ If on importing mlabwrap you get somthing like this::
 
 then chances are that the relevant matlab libraries are not in you library
 path. You can rectify this situation in a number of ways; let's assume your
-running linux and that the libraries are in
-``/usr/local/matlab/extern/lib/glnx86/``
+running linux and that the libraries are in ``/opt/matlab/bin/glnx86/``
+(**NOTE**: *this used to be ``/opt/matlab/extern/lib/glnx86/`` in versions
+before 7; confusingly enough the directory still exists, but the required
+libraries no longer reside there!*) 
 
 1. As a normal user, you can append the path to LD_LIBRARY_PATH (under bash)::
 
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/matlab/extern/lib/glnx86/
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/matlab/bin/glnx86/
 
 2. As root, you can either add the matlab library path to ``/etc/ld.so.conf``
    and run ``ldconfig``
 
 3. Or, ugly but also works: just copy or symlink all the libraries to
    ``/usr/lib`` or something else that's in your library path.
+
+
+Can't open engine
+'''''''''''''''''
+If you see something like ``mlabraw.error: Unable to start MATLAB(TM) engine``
+then you may be using an incompatible C++ compiler (or version). Try if you
+can get the ``engdemo.c`` file to work that comes with your matlab
+installation -- copy it to a directory where you have write access and do
+(assuming matlab is installed in /opt/MatlabR14 and you're running unix,
+otherwise modify as requird)::
+
+  mex -f /opt/MatlabR14/bin/engopts.sh engdemo.c
+  ./engdemo
+
+
+if you get ``Can't start MATLAB engine`` chances are you're trying to use a
+compiler version that's not in Mathworks's `list of compatible compilers`_ or
+something else with your compiler/Matlab installation is broken that needs to
+be resolved before you can successfully build mlabwrap.
+
+Old Matlab version
+''''''''''''''''''
+If you get something like this on ``python setup.py install``::
+
+ mlabraw.cpp:634: `engGetVariable' undeclared (first use this function)
+
+Then you're presumably using an old version of matlab (i.e. < 6.5);
+``setup.py`` ought to have detected this though (try adjusting
+``MATLAB_VERSION`` by hand a write me a bug report).
 
 
 OS X
@@ -340,8 +389,6 @@ Private email is OK, but the preferred way is via the recently established
 .. _project mailing list:
    http://lists.sourceforge.net/lists/listinfo/mlabwrap-user
 
-
-
 Download
 --------
 
@@ -356,6 +403,9 @@ Credits
 Andrew Sterian for writing pymat without which this module would never have
 existed. 
 
+Matthew Brett contributed numpy compatibility and setup.py improvements to
+further reduce the need for user intervention in setup.py.
+
 I'm only using linux myself -- so I gratefully acknowledge the help of Windows
 and OS X users to get things running smoothly under these OSes as well.
 
@@ -364,8 +414,14 @@ Matlab is a registered trademark of `The Mathworks`_.
 .. _The Mathworks: 
    http://www.mathworks.com
 
+.. _numpy:
+   http://numpy.scipy.org
+
 .. _netlab:
    http://www.ncrg.aston.ac.uk/netlab/
+
+.. _list of compatible compilers:
+   http://www.mathworks.com/support/tech-notes/1600/1601.html
 
 .. image:: http://sourceforge.net/sflogo.php?group_id=124293&amp;type=5
    :alt: sourceforge-logo

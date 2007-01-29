@@ -144,17 +144,15 @@ Fine points and limitations
 - you can customize how matlab is called by setting the environment variable
   ``MLABRAW_CMD_STR`` (useful options ).
 
-- if you don't want to use Numeric arrays, but something else that's fine
+- if you don't want to use numpy arrays, but something else that's fine
   too::
 
-    >>> import Matrix
-    >>> mlab._array_cast = Matrix.Matrix
+    >>> import matrix from numpy.core.defmatrix
+    >>> mlab._array_cast = matrix
     >>> mlab.sqrt([[4.], [1.], [0.]])
-    Matrix([[ 2.],
+    matrix([[ 2.],
             [ 1.],
             [ 0.]])
-
-  (<plug>of course nummat.matrix is a superior choice...</plug>)
 
 Credits
 -------
@@ -165,15 +163,12 @@ modified and bugfixed version of Andrew Sterian's pymat
 to him for releasing his package as open source.
 
 
-
-Tested under matlab v6r12 and python2.2.1 to python2.3.2
-
 See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 """
 
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
-__version__ = "0.9.1"
+__version__ = "1.0a"
 __author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
 import warnings
 from pickle import PickleError
@@ -181,14 +176,20 @@ import operator
 import os, sys, re
 import weakref
 import atexit
-import Numeric
+try:
+    import numpy
+    ndarray = numpy.ndarray
+except ImportError:
+    import Numeric
+    ndarray = Numeric.ArrayType
+
 
 from tempfile import mktemp, gettempdir
 try: # python >= 2.3 has better mktemp
     from tempfile import mkstemp as _mkstemp
     mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
-except ImportError: pass
-
+except ImportError: 
+    enumerate = lambda x: zip(xrange(sys.maxint), x) # also not in 2.2
 import mlabraw
 
 from awmstools import ipupdate,slurpIn, spitOut, isString
@@ -350,7 +351,7 @@ class MlabWrap(object):
         """
         self._array_cast  = None
         """specifies a cast for arrays. If the result of an
-        operation is a Numeric array, ``return_type(res)`` will be returned
+        operation is a numpy array, ``return_type(res)`` will be returned
         instead."""
         self._autosync_dirs=True
         """`autosync_dirs` specifies whether the working directory of the
@@ -382,7 +383,7 @@ class MlabWrap(object):
     def _format_struct(self, varname):
         res = []
         fieldnames = self._do("fieldnames(%s)" % varname)
-        size       = self._do("size(%s)" % varname).flat
+        size       = numpy.ravel(self._do("size(%s)" % varname))
         return "%dx%d struct array with fields:\n%s" % (
             size[0], size[1], "\n   ".join([""] + fieldnames))
 ##         fieldnames
@@ -414,7 +415,7 @@ class MlabWrap(object):
 ##     def _as_mlabable_type(self, arg):
 ##         # that should now be handled by mlabraw...
 ##         if   isinstance(arg, (int, float, long, complex)):
-##             return Numeric.array([arg])
+##             return numpy.array([arg])
 ##         if operator.isSequenceType(arg):
 ##             return arg
 ##         else:
@@ -490,7 +491,7 @@ class MlabWrap(object):
         argnames = []
         tempargs = []
         try:
-            for arg, count in zip(args, xrange(sys.maxint)):
+            for count, arg in enumerate(args):
                 if isinstance(arg, MlabObjectProxy):
                     argnames.append(arg._name)
                 else:
@@ -537,10 +538,10 @@ class MlabWrap(object):
         vartype = self._var_type(varname)
         if vartype in self._mlabraw_can_convert:
             var = mlabraw.get(self._session, varname)
-            if type(var) is Numeric.ArrayType:
-                if self._flatten_row_vecs and Numeric.shape(var)[0] == 1:
+            if isinstance(var, ndarray):
+                if self._flatten_row_vecs and numpy.shape(var)[0] == 1:
                     var.shape = var.shape[1:2]
-                elif self._flatten_col_vecs and Numeric.shape(var)[1] == 1:
+                elif self._flatten_col_vecs and numpy.shape(var)[1] == 1:
                     var.shape = var.shape[0:1]
                 if self._array_cast:
                     var = self._array_cast(var)
@@ -590,7 +591,7 @@ class MlabWrap(object):
         try:
             typ = int(typ)              # only works if autoconverted to 0d
         except TypeError:
-            typ = Numeric.ravel(typ)[0]
+            typ = numpy.ravel(typ)[0]
         doc = self._do("help('%s')" % name)
         if   typ == 0: # doesn't exist
             raise AttributeError("No such matlab object: %s" % name)

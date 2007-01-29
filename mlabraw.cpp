@@ -17,11 +17,13 @@
   Revision History
   ================
 
-  mlabraw version 0.9b3 -- 2003-11-29 Alexander Schmolck (a.schmolck@gmx.net)
-  --------------------------------------------------------------------------
+  mlabraw version 1.0a -- 2007-01-29 Alexander Schmolck (a.schmolck@gmx.net)
+  ---------------------------------------------------------------------------
   A modified, bugfixed and renamed version of pymat.
    
    * Interface changes:
+     - works with both numpy and Numeric (Numeric support will likely
+       disappear in the future)
      - removed (buggy and conceptually dubious) autoconversion of matlab(tm)
        1xN or Nx1 matrices to Numeric flat vectors 1x.
      - added proper error reporting: if something goes wrong during a matlab
@@ -35,6 +37,7 @@
        currently just ignored)
        
    * Bug fixes:
+     - added 64bit support
      - fixed serious memory violation bug: conversion of all flat Numeric
        vectors caused illegal memory access (in the copyNumeric... routines).
      - fixed serious memory leak (objects copied into matlab space are never destroyed)
@@ -56,7 +59,7 @@
 
   Copyright & Disclaimer
   ======================
-  Copyright (c) 2002,2003 Alexander Schmolck <a.schmolck@gmx.net>
+  Copyright (c) 2002-2007 Alexander Schmolck <a.schmolck@gmx.net>
 
   Copyright (c) 1998,1999 Andrew Sterian. All Rights Reserved. mailto: steriana@gvsu.edu
 
@@ -81,7 +84,7 @@
 
 */
 
-#define MLABRAW_VERSION "0.9b1"
+#define MLABRAW_VERSION "1.0a"
 
 // We're not building a MEX file, we're building a standalone app.
 #undef MATLAB_MEX_FILE
@@ -91,7 +94,17 @@
 #endif
 
 #include <Python.h>
+#ifndef MLABRAW_USE_NUMERIC
+#include <numpy/arrayobject.h>
+# ifndef PyArray_SBYTE
+#  include <numpy/oldnumeric.h>
+#  include <numpy/old_defines.h>
+# endif
+#else
 #include <Numeric/arrayobject.h>
+#define npy_intp int
+#endif
+
 #include <engine.h>
 
 #ifndef max
@@ -99,7 +112,6 @@
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #endif
 
-//#define Py_DECREF(x) { if (x == NULL) {printf ("FUCKING HELL\n");}}
 static PyObject *mlabraw_error;
 
 #define pyassert(x,y) if (! (x)) { _pyassert(y); goto error_return; }
@@ -193,7 +205,7 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
 }
 
 template <class T>
-static inline void copyNumericVector2Mx(T *pSrc, int pRows, double *pDst, int *pStrides)
+static inline void copyNumericVector2Mx(T *pSrc, npy_intp pRows, double *pDst, npy_intp *pStrides)
 {
   // this is a horrible HACK for 0-D arrays (which have no strides);
   // it should also work for shape (1,) 1D arrays.
@@ -202,47 +214,47 @@ static inline void copyNumericVector2Mx(T *pSrc, int pRows, double *pDst, int *p
     *pDst = *pSrc;
   } 
   else {
-    int lRowDelta = pStrides[0]/sizeof(T);
-    for (int lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
+    npy_intp lRowDelta = pStrides[0]/sizeof(T);
+    for (npy_intp lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
       *pDst++ = *pSrc;
     }
   }
 }
 
 template <class T>
-static inline void copyNumeric2Mx(T *pSrc, int pRows, int pCols, double *pDst, int *pStrides)
+static inline void copyNumeric2Mx(T *pSrc, npy_intp pRows, npy_intp pCols, double *pDst, npy_intp *pStrides)
 {
-  int lRowDelta = pStrides[0]/sizeof(T);
-  int lColDelta = pStrides[1]/sizeof(T);
-  for (int lCol=0; lCol < pCols; lCol++) {
+  npy_intp lRowDelta = pStrides[0]/sizeof(T);
+  npy_intp lColDelta = pStrides[1]/sizeof(T);
+  for (npy_intp lCol=0; lCol < pCols; lCol++) {
     T *lSrc = pSrc + lCol*lColDelta;
-    for (int lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
+    for (npy_intp lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
       *pDst++ = *lSrc;
     }
   }
 }
 template <class T>
-static inline void copyCplxNumericVector2Mx(T *pSrc, int pRows, double *pRData, 
-                              double *pIData, int *pStrides)
+static inline void copyCplxNumericVector2Mx(T *pSrc, npy_intp pRows, double *pRData, 
+                              double *pIData, npy_intp *pStrides)
 {
-  int lRowDelta = pStrides[0]/sizeof(T);
-  for (int lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
+  npy_intp lRowDelta = pStrides[0]/sizeof(T);
+  for (npy_intp lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
     *pRData++ = pSrc[0];
     *pIData++ = pSrc[1];
   }
 }
 
 template <class T>
-static inline void copyCplxNumeric2Mx(T *pSrc, int pRows, int pCols, double *pRData, 
-                        double *pIData, int *pStrides)
+static inline void copyCplxNumeric2Mx(T *pSrc, npy_intp pRows, npy_intp pCols, double *pRData, 
+                        double *pIData, npy_intp *pStrides)
 {
-  int lRowDelta = pStrides[0]/sizeof(T);
-  int lColDelta = pStrides[1]/sizeof(T);
+  npy_intp lRowDelta = pStrides[0]/sizeof(T);
+  npy_intp lColDelta = pStrides[1]/sizeof(T);
 
 
-  for (int lCol=0; lCol < pCols; lCol++) {
+  for (npy_intp lCol=0; lCol < pCols; lCol++) {
     T *lSrc = pSrc + lCol*lColDelta;
-    for (int lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
+    for (npy_intp lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
       *pRData++ = lSrc[0];
       *pIData++ = lSrc[1];
     }
@@ -251,7 +263,7 @@ static inline void copyCplxNumeric2Mx(T *pSrc, int pRows, int pCols, double *pRD
 
 static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 {
-  int lRows, lCols;
+  npy_intp lRows, lCols;
   bool lIsComplex;
   bool lIsNotAMatrix = false;
   double *lR = NULL;
@@ -499,9 +511,6 @@ PyObject * mlabraw_open(PyObject *, PyObject *args)
   char *lStr = "\0"; // "matlab -check_malloc";
   if (! PyArg_ParseTuple(args, "|s:open", &lStr)) return NULL;
 
-  pyassert(sizeof(int) >= sizeof(Engine *), 
-         "Oops! Pointers on this architecture are too big to fit in integers");
-
 #ifdef WIN32
   ep = engOpen(NULL);
 #else
@@ -511,12 +520,12 @@ PyObject * mlabraw_open(PyObject *, PyObject *args)
     PyErr_SetString(mlabraw_error, "Unable to start MATLAB(TM) engine");
     return NULL;
   }
-
-  return Py_BuildValue("i", int(ep));
-
- error_return:
-  return NULL;
+  return PyCObject_FromVoidPtr(ep, NULL); //XXX Check that's right
 }
+
+
+
+
 
 static char close_doc[] = 
 "close(handle)\n"
@@ -528,11 +537,11 @@ static char close_doc[] =
 ;
 PyObject * mlabraw_close(PyObject *, PyObject *args)
 {
-  int lHandle;
+  PyObject *lHandle;
 
-  if (! PyArg_ParseTuple(args, "i:close", &lHandle)) return NULL;
+  if (! PyArg_ParseTuple(args, "O:close", &lHandle)) return NULL;
 
-  if (engClose((Engine *)lHandle) != 0) {
+  if (engClose((Engine *)PyCObject_AsVoidPtr(lHandle)) != 0) {
     PyErr_SetString(mlabraw_error, "Unable to close session");
     return NULL;
   }
@@ -562,10 +571,10 @@ PyObject * mlabraw_eval(PyObject *, PyObject *args)
   char *lStr;
   char *retStr = buffer;
   PyObject *ret;
-  int lHandle;
-  if (! PyArg_ParseTuple(args, "is:eval", &lHandle, &lStr)) return NULL;
-  engOutputBuffer((Engine *)lHandle, retStr, BUFSIZE-1);
-  if (engEvalString((Engine *)lHandle, lStr) != 0) {
+  PyObject *lHandle;
+  if (! PyArg_ParseTuple(args, "Os:eval", &lHandle, &lStr)) return NULL;
+  engOutputBuffer((Engine *)PyCObject_AsVoidPtr(lHandle), retStr, BUFSIZE-1);
+  if (engEvalString((Engine *)PyCObject_AsVoidPtr(lHandle), lStr) != 0) {
     PyErr_SetString(mlabraw_error, 
                    "Unable to evaluate string in MATLAB(TM) workspace");
     return NULL;
@@ -612,17 +621,17 @@ static char get_doc[] =
 PyObject * mlabraw_get(PyObject *, PyObject *args)
 {
   char *lName;
-  int lHandle;
+  PyObject *lHandle;
   mxArray *lArray = NULL;
   PyObject *lDest = NULL;
 
-  if (! PyArg_ParseTuple(args, "is:get", &lHandle, &lName)) return NULL;
+  if (! PyArg_ParseTuple(args, "Os:get", &lHandle, &lName)) return NULL;
   
 // for matlab >= 6.5 (FIXME UNTESTED)
 #ifdef _V6_5_OR_LATER
-  lArray = engGetVariable((Engine *)lHandle, lName);
+  lArray = engGetVariable((Engine *)PyCObject_AsVoidPtr(lHandle), lName);
 #else
-  lArray = engGetArray((Engine *)lHandle, lName);
+  lArray = engGetArray((Engine *)PyCObject_AsVoidPtr(lHandle), lName);
 #endif
   if (lArray == NULL) {
     PyErr_SetString(mlabraw_error, 
@@ -662,11 +671,11 @@ static char put_doc[] =
 PyObject * mlabraw_put(PyObject *, PyObject *args)
 {
   char *lName;
-  int lHandle;
+  PyObject *lHandle;
   PyObject *lSource;
   mxArray *lArray = NULL;
 
-  if (! PyArg_ParseTuple(args, "isO:put", &lHandle, &lName, &lSource)) return NULL;
+  if (! PyArg_ParseTuple(args, "OsO:put", &lHandle, &lName, &lSource)) return NULL;
   Py_INCREF(lSource);
 
   if (PyString_Check(lSource)) {
@@ -683,10 +692,10 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
 
 // for matlab version >= 6.5 (FIXME UNTESTED)
 #ifdef _V6_5_OR_LATER
-  if (engPutVariable((Engine *)lHandle, lName, lArray) != 0) {
+  if (engPutVariable((Engine *)PyCObject_AsVoidPtr(lHandle), lName, lArray) != 0) {
 #else
   mxSetName(lArray, lName);
-  if (engPutArray((Engine *)lHandle, lArray) != 0) {
+  if (engPutArray((Engine *)PyCObject_AsVoidPtr(lHandle), lArray) != 0) {
 #endif
     PyErr_SetString(mlabraw_error, 
                    "Unable to put matrix into MATLAB(TM) workspace");

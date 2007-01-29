@@ -10,14 +10,15 @@
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
 ####################################################################
-MATLAB_VERSION = 7          # e.g: 6 (one of (6, 6.5, 7))
-MATLAB_DIR=None             # e.g: '/usr/local/matlab'; 'c:/matlab6'
-EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
+MATLAB_VERSION = None       # e.g: 6 (one of (6, 6.5, 7))
+MATLAB_DIR= None            # e.g: '/usr/local/matlab'; 'c:/matlab6'
 PLATFORM_DIR=None           # e.g: 'glnx86'; r'win32/microsoft/msvc60'
+EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
 
 # hopefully these 3 won't need modification
 MATLAB_LIBRARIES=None       # e.g: ['eng', 'mx', 'mat', 'mi', 'ut']
-PYTHON_INCLUDE_DIR=None     # where to find Numeric/*.h
+USE_NUMERIC=None            # use obsolete Numeric instead of numpy?
+PYTHON_INCLUDE_DIR=None     # where to find numpy/*.h or Numeric/*.h
 
 SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already 
                                            # installed
@@ -37,28 +38,58 @@ VC_DIR='C:/Program Files/Microsoft Visual Studio .NET 2003/vc7'
 from distutils.core import setup, Extension
 import os, os.path, glob
 import sys
+import re
+from tempfile import mktemp
+try: # python >= 2.3 has better mktemp
+    from tempfile import mkstemp as _mkstemp
+    mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
+except ImportError: pass
 if sys.version_info < (2,2):
     print >> sys.stderr, "You need at least python 2.2"
     sys.exit(1)
 
+if PYTHON_INCLUDE_DIR is None and not USE_NUMERIC:
+    try:
+        import numpy
+        PYTHON_INCLUDE_DIR = numpy.get_include()
+    except ImportError:
+        print >> sys.stderr, "Warning: numpy not found. Still using Numeric?"
+        try:
+            import Numeric
+            if USE_NUMERIC is None: USE_NUMERIC=True
+        except ImportError:
+            print >> sys.stderr, "CANNOT FIND EITHER NUMPY *OR* NUMERIC"
+
+
+def matlab_params(matlab_command_str):
+    param_fname = mktemp()
+    startup = "fid = fopen('%s', 'wt');" % param_fname + \
+              r"fprintf(fid, '%s\n%s\n%s\n', version, matlabroot, computer);" + \
+              "fclose(fid); quit"
+    try:
+        os.system(matlab_command_str % re.escape(startup))
+        ver, pth, platform = open(param_fname).readlines()
+        return (float(re.match(r'\d+.\d+',ver).group()),
+                pth.rstrip(), platform.rstrip().lower())
+    finally:
+        os.remove(param_fname)
+
+
 # windows
-WINDOWS=False
-if sys.platform.startswith('win'):
+WINDOWS=sys.platform.startswith('win')
+if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
+    cmd='matlab -nodesktop -nosplash -r %s'
+    if not WINDOWS:
+        cmd+=' >/dev/null'
+    queried_version, queried_dir, queried_platform_dir = matlab_params(cmd)
+    MATLAB_VERSION = MATLAB_VERSION or queried_version
+    MATLAB_DIR = MATLAB_DIR or queried_dir
+    PLATFORM_DIR = PLATFORM_DIR or queried_platform_dir
+if WINDOWS:
     WINDOWS=True
     EXTENSION_NAME = 'mlabraw'
     MATLAB_LIBRARIES = MATLAB_LIBRARIES or 'libeng libmx'.split()
     CPP_LIBRARIES = [] #XXX shouldn't need CPP libs for windoze
-    print >> sys.stderr, "WINDOZE INSTALL UNTESTED: best of luck!"
-    if not MATLAB_DIR:
-        try:
-            MATLAB_DIR = glob.glob('c:/matlab*')[0]
-        except IndexError:
-            print >> sys.stderr, """\
-ERROR: CAN'T FIND MATLAB DIR
-please edit setup.py by hand and set MATLAB_DIR
-"""
-            sys.exit(1)
-    PLATFORM_DIR = PLATFORM_DIR or 'win32/microsoft/msvc71/'
 # unices
 else:
     EXTENSION_NAME = 'mlabrawmodule'
@@ -67,51 +98,33 @@ else:
             MATLAB_LIBRARIES = 'eng mx mat ut'.split()
         else:
             MATLAB_LIBRARIES = 'eng mx mat mi ut'.split()
-    
     CPP_LIBRARIES = ['stdc++'] #XXX strangely  only needed on some linuxes
-    # try to guess where matlab is
-    if not MATLAB_DIR:
-        try:
-            guess = os.path.dirname(os.popen('which matlab').read()).\
-                    replace('/bin','') or \
-                    filter(None,
-                           map(glob.glob, ['/Applications/MATLAB*', #OS X
-                                           '/usr/local/matlab*',
-                                           '/opt/matlab*']))[0][0]
-        except:
-            print >> sys.stderr("FAILED GUESSING MATLAB_DIR, assume default")
-            guess = '/usr/local/matlab'
-        if os.path.exists(guess):
-            MATLAB_DIR = guess
-        else:
-            print >> sys.stderr, """\
-ERROR: CAN'T FIND MATLAB DIR
-please edit setup.py by hand and set MATLAB_DIR
-"""
-            sys.exit(1)
     if sys.platform.startswith('sunos'):
         EXTRA_COMPILE_ARGS = EXTRA_COMPILE_ARGS or ['-G']
-        PLATFORM_DIR = PLATFORM_DIR or "sol2"
-    elif sys.platform.startswith('linux'):
-        PLATFORM_DIR = PLATFORM_DIR or "glnx86"
-    elif sys.platform.startswith('darwin'):
-        PLATFORM_DIR = PLATFORM_DIR or "mac"
+        
+        
 
 if MATLAB_VERSION >= 7 and not WINDOWS:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/bin/" + PLATFORM_DIR]
 else:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/extern/lib/" + PLATFORM_DIR]
 MATLAB_INCLUDE_DIRS = [MATLAB_DIR + "/extern/include"] #, "/usr/include"
-if sys.platform.startswith('win'):
+if WINDOWS:
      MATLAB_LIBRARY_DIRS += [VC_DIR + "/lib"]
      MATLAB_INCLUDE_DIRS += [VC_DIR + "/include", VC_DIR + "/PlatformSDK/include"]
+elif [mld for mld in MATLAB_LIBRARY_DIRS if os.getenv('LD_LIBRARY_PATH',"").find(mld) == -1]:
+    print >> sys.stderr, """
+    DON'T FORGET TO DO SOMETHING LIKE:
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:%s
+    """ % (":".join(MATLAB_LIBRARY_DIRS))
+DEFINE_MACROS=[]    
 if MATLAB_VERSION >= 6.5:
-    DEFINE_MACROS = [('_V6_5_OR_LATER',1)]
-else:
-    DEFINE_MACROS = None
+    DEFINE_MACROS.append(('_V6_5_OR_LATER',1))
+if USE_NUMERIC:
+    DEFINE_MACROS.append(('MLABRAW_USE_NUMERIC', 1))
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "0.9.1",
+       version = "1.0a",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",

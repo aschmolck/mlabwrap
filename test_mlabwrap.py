@@ -7,7 +7,14 @@
 ## o last modified: $Date$
 
 import sys, os
-import Numeric
+try:
+    import numpy
+    from numpy.random import rand, randn
+    toscalar = lambda a:a.item()
+except ImportError:
+    import Numeric as numpy
+    from MLab import rand, randn
+    toscalar = lambda a:a.toscalar()
 from tempfile import mktemp
 try: # python >= 2.3 has better mktemp
     from tempfile import mkstemp as _mkstemp
@@ -68,12 +75,12 @@ class NumericTestCase(TestCase):
             # HACK
             if len(first) == len(second) == 0:
                 return `first` == `second` # deal with empty arrays
-            res = ((not testShape or Numeric.shape(first) == Numeric.shape(second)) and 
+            res = ((not testShape or numpy.shape(first) == numpy.shape(second)) and 
                    # it is necessary to exclude 0 element arrays, because
 
                    # identical zero-element arrays don't compare true (``and True`` normalizes)
                    (not len(first) and not len(second)
-                    or bool(Numeric.alltrue((Numeric.ravel(first == second))))))
+                    or bool(numpy.alltrue((numpy.ravel(first == second))))))
         return res
     def _smallRepr(self, *args):
         return tuple([fitString(repr(arg), maxCol=self.maxReprLength,
@@ -91,14 +98,14 @@ class NumericTestCase(TestCase):
                   (msg or '%s == %s' % self._smallRepr(first, second))
     assertNotEquals = failIfEqual = assertNotEqual
     def assertAlmostEqual(self, first, second, places=7, msg=None):
-        if not (Numeric.shape(first) == Numeric.shape(second) and \
-                self._reallyEqual(Numeric.around(second-first, places), 0, testShape=False)):
+        if not (numpy.shape(first) == numpy.shape(second) and \
+                self._reallyEqual(numpy.around(second-first, places), 0, testShape=False)):
             raise self.failureException, \
                   (msg or '%s != %s within %s places' % self._smallRepr(first,second,places))
     assertAlmostEquals = failUnlessAlmostEqual = assertAlmostEqual
     def assertNotAlmostEqual(self, first, second, places=7, msg=None):
-        if not (Numeric.shape(first) == Numeric.shape(second) and \
-                not self._reallyEqual(Numeric.around(second-first, places), 0, testShape=False)):
+        if not (numpy.shape(first) == numpy.shape(second) and \
+                not self._reallyEqual(numpy.around(second-first, places), 0, testShape=False)):
             raise self.failureException, \
                   (msg or '%s == %s within %s places' % self._smallRepr(first,second,places))
     failIfAlmostEqual =  assertNotAlmostEquals = assertNotAlmostEqual
@@ -108,14 +115,13 @@ class mlabwrapTC(NumericTestCase):
 ##     def assertEqual(self, first, second):
 ##         res = first == second
 ##         if len(res):
-##             res = Numeric.shape(first) == Numeric.shape(second) and \
-##                   bool(Numeric.alltrue((Numeric.ravel(a1 == a2))))
+##             res = numpy.shape(first) == numpy.shape(second) and \
+##                   bool(numpy.alltrue((numpy.ravel(a1 == a2))))
 ##         super(TestCase, self).assertEquals(res, True)
         
     def testBasic(self):
         """Test basic behavior."""
-        array = Numeric.array
-        from MLab import rand, randn
+        array = numpy.array
         from random import randrange
         "This largely tests basic mlabraw conversion functionality"
         for i in range(30):
@@ -128,19 +134,19 @@ class mlabwrapTC(NumericTestCase):
                 a = rand(randrange(1,3),randrange(1,3))
             a1 = a.copy()
             mlab._set('a', a)
-            if Numeric.rank(a) == 2:
+            if numpy.rank(a) == 2:
                 self.assertEqual(a, mlab._get('a'))
             else:
-                self.assertEqual(a, mlab._get('a').flat)
+                self.assertEqual(a, numpy.ravel(mlab._get('a')))
             self.assertEqual(a, a1)
             # make sure strides also work OK!
             mlab._set('a', a[::-2])
-            if Numeric.rank(a) == 2:
+            if numpy.rank(a) == 2:
                 self.assertEqual(a[::-2], mlab._get('a'))
             else:
-                self.assertEqual(a[::-2], mlab._get('a').flat)
+                self.assertEqual(a[::-2], numpy.ravel(mlab._get('a')))
             self.assertEqual(a, a1)                
-            if Numeric.rank(a) == 2:
+            if numpy.rank(a) == 2:
                 mlab._set('a', a[0:-3:3,::-1])
                 self.assertEqual(a[0:-3:3,::-1], mlab._get('a'))
                 # test there are no aliasing problems
@@ -153,11 +159,11 @@ class mlabwrapTC(NumericTestCase):
             mlab.clear('a')                
             # the tricky diversity of empty arrays
             mlab._set('a', [[]])
-            self.assertEqual(mlab._get('a'), Numeric.zeros((1, 0), 'd'))
-            mlab._set('a', Numeric.zeros((0,0)))
-            self.assertEqual(mlab._get('a'), Numeric.zeros((0, 0), 'd'))
+            self.assertEqual(mlab._get('a'), numpy.zeros((1, 0), 'd'))
+            mlab._set('a', numpy.zeros((0,0)))
+            self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd'))
             mlab._set('a', [])
-            self.assertEqual(mlab._get('a'), Numeric.zeros((0, 0), 'd'))
+            self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd'))
             # 0d
             mlab._set('a', -2)
             self.assertEqual(mlab._get('a'), array([       [-2.]]))
@@ -219,24 +225,23 @@ class mlabwrapTC(NumericTestCase):
             mlab._dont_proxy['cell'] = False
     def testXXXSubtler(self):
         """test more subtle stuff. This must come last, hence the XXX"""
-        import Numeric
         import os, cPickle
-        array = Numeric.array
+        array = numpy.array
         # simple strings:
         assert (mlab._do("''"), mlab._do("'foobar'")) == ('', 'foobar')
-        assert mlab.sort(1) == Numeric.array([1.])
-        assert mlab.sort([3,1,2]) == Numeric.array([1., 2., 3.])
-        assert mlab.sort(Numeric.array([3,1,2])) == Numeric.array([1., 2., 3.])
+        self.assertEqual(mlab.sort(1), numpy.array([[1.]]))
+        self.assertEqual(mlab.sort([3,1,2]), numpy.array([[1.], [2.], [3.]]))
+        self.assertEqual(mlab.sort(numpy.array([3,1,2])), numpy.array([[1.], [2.], [3.]]))
         sct = mlab._do("struct('type',{'big','little'},'color','red','x',{3 4})")
         bct = mlab._do("struct('type',{'BIG','little'},'color','red')")
-        self.assertEqual(sct[1].x, Numeric.array([[4]]))
-        self.assertEqual(sct[0].x, Numeric.array([[3]]))
+        self.assertEqual(sct[1].x, numpy.array([[4]]))
+        self.assertEqual(sct[0].x, numpy.array([[3]]))
         #FIXME sct[:].x wouldn't work, but currently I'm not sure that's my fault
         sct[1].x  = 'New Value'
         assert sct[1].x == 'New Value'
         assert bct[0].type == 'BIG' and sct[0].type == 'big'
         mlab._set('foo', 1)
-        assert mlab._get('foo') == Numeric.array([1.])
+        assert mlab._get('foo') == numpy.array([1.])
         assert not mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
                ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
         mlab._dont_proxy['cell'] = True
@@ -311,19 +316,19 @@ class mlabwrapTC(NumericTestCase):
             ncf._['someOtherVariable'] = 'dimension2'
             ncf._['someVariable'].someUnit = 'pixel'
             ncf._['someVariable'][:] = range(10)
-            assert list(ncf._['someVariable'][:].flat) == range(10)
+            assert list(numpy.ravel(ncf._['someVariable'][:])) == range(10)
             ncf._['someVariable'][2:5] = [22,33,44]
-            assert list(ncf._['someVariable'][:].flat) == [0,1,22,33,44,5,6,7,8,9]
+            assert list(numpy.ravel(ncf._['someVariable'][:])) == [0,1,22,33,44,5,6,7,8,9]
             ncf._['someOtherVariable'][0:20] = range(20)
             mlab.close(ncf)
 
             # open netcdf file for reading and check everything's OK
             ncf = mlab.netcdf(tmp_filename, 'read')
-            assert list(ncf._['someOtherVariable'][:].flat) == range(20)
-            assert list(ncf._['someVariable'][:].flat) == [0,1,22,33,44,5,6,7,8,9]
+            assert list(numpy.ravel(ncf._['someOtherVariable'][:])) == range(20)
+            assert list(numpy.ravel(ncf._['someVariable'][:])) == [0,1,22,33,44,5,6,7,8,9]
             self.assertRaises(ValueError, ncf._['someVariable'].__getitem__,slice(2, None, None))
             self.assertRaises(ValueError, ncf._['someVariable'].__getitem__,slice(2, 4, -1))
-            assert ncf.someGlobalAttributeDouble[:].toscalar() == 2.0
+            assert toscalar(ncf.someGlobalAttributeDouble[:]) == 2.0
             assert ncf.someGlobalAttributeStr[:] == "A random comment"
             assert ncf._['someVariable'].someUnit[:] == 'pixel'
             assert ncf.someGlobalAttributeStr[:] == "A random comment"
