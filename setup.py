@@ -10,7 +10,7 @@
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
 ####################################################################
-MATLAB_VERSION = None       # e.g: 6 (one of (6, 6.5, 7))
+MATLAB_VERSION = None       # e.g: 6 (one of (6, 6.5, 7, 7.3))
 MATLAB_DIR= None            # e.g: '/usr/local/matlab'; 'c:/matlab6'
 PLATFORM_DIR=None           # e.g: 'glnx86'; r'win32/microsoft/msvc60'
 EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
@@ -60,14 +60,13 @@ if PYTHON_INCLUDE_DIR is None and not USE_NUMERIC:
         except ImportError:
             print >> sys.stderr, "CANNOT FIND EITHER NUMPY *OR* NUMERIC"
 
-
 def matlab_params(matlab_command_str):
     param_fname = mktemp()
     startup = "fid = fopen('%s', 'wt');" % param_fname + \
               r"fprintf(fid, '%s\n%s\n%s\n', version, matlabroot, computer);" + \
               "fclose(fid); quit"
     try:
-        os.system(matlab_command_str % re.escape(startup))
+        os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup) #HACK
         ver, pth, platform = open(param_fname).readlines()
         return (float(re.match(r'\d+.\d+',ver).group()),
                 pth.rstrip(), platform.rstrip().lower())
@@ -78,10 +77,13 @@ def matlab_params(matlab_command_str):
 # windows
 WINDOWS=sys.platform.startswith('win')
 if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
-    cmd='matlab -nodesktop -nosplash -r %s'
+    cmd = os.getenv('MLABRAW_CMD_STR', 'matlab') + ' -nodesktop -nosplash -r "%s"'
     if not WINDOWS:
         cmd+=' >/dev/null'
-    queried_version, queried_dir, queried_platform_dir = matlab_params(cmd)
+    if len(sys.argv) > 1 and re.search("build|install|bdist", sys.argv[1]):
+        queried_version, queried_dir, queried_platform_dir = matlab_params(cmd)
+    else:
+        queried_version, queried_dir, queried_platform_dir = ["WHATEVER"]*3
     MATLAB_VERSION = MATLAB_VERSION or queried_version
     MATLAB_DIR = MATLAB_DIR or queried_dir
     PLATFORM_DIR = PLATFORM_DIR or queried_platform_dir
@@ -120,11 +122,13 @@ elif [mld for mld in MATLAB_LIBRARY_DIRS if os.getenv('LD_LIBRARY_PATH',"").find
 DEFINE_MACROS=[]    
 if MATLAB_VERSION >= 6.5:
     DEFINE_MACROS.append(('_V6_5_OR_LATER',1))
+if MATLAB_VERSION >= 7.3:
+    DEFINE_MACROS.append(('_V7_3_OR_LATER',1))
 if USE_NUMERIC:
     DEFINE_MACROS.append(('MLABRAW_USE_NUMERIC', 1))
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "1.0a",
+       version = "1.0b",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
