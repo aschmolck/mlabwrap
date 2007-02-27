@@ -1,27 +1,33 @@
 ==============
-mlabwrap v1.0a
+mlabwrap v1.0b
 ==============
 
 :copyright: 2003-2007 Alexander Schmolck
-:date: 2007-01-29
+:date: 2007-02-27
 
 .. contents:: 
 
 Description
 -----------
 
-A high-level python to `matlab(tm)`_ bridge. Let's matlab look like a normal
+A high-level python to `Matlab(tm)`_ bridge. Let's matlab look like a normal
 python library.
 
-.. _matlab(tm): 
+.. _Matlab(tm): 
    http://www.mathworks.com
 
 News
 ----
 
-2007-01-29: After some longer release hiatus version 1.0a brings numpy_ and
+**2007-02-27** version 1.0b brings python 2.5 compatibility and various small
+fixes (improved error handling for 7.3 etc.)
+
+**2007-02-02** version 1.0a3 should hopefully bring matlab 7.3 compatibility
+(I can't test this myself).
+
+**2007-01-29** After some longer release hiatus version 1.0a brings numpy_ and
 64-bit compatibility as well as improved ``setup.py``; however this is still
-an *alpha* version; memory violations and other nasty things may happen!
+an *alpha version*; memory violations and other nasty things may happen!
 
 License
 -------
@@ -43,7 +49,7 @@ like ``export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/MatlabR14/bin/glnx86`` in
 the shell (assuming you're using bash or zsh); and adding that line to your
 ``~/.bashrc`` (or equivalent) is presumably a good idea).
 
-If things do go awry, see `Troubleshooting`.
+If things do go awry, see Troubleshooting_.
 
 Although I myself use only linux, mlabwrap should work with python>=2.3 (even
 python 2.2, with minor coaxing) and either numpy_ (recommended) or Numeric
@@ -115,7 +121,7 @@ Then you try it out:
 array([[ 3.86432845],
       [ 0.25877718]])
 
-Notice that we only go 'U' back -- that's because python hasn't got something
+Notice that we only got 'U' back -- that's because python hasn't got something
 like matlab's multiple value return. Since matlab functions can have
 completely different behavior depending on how many output parameters are
 requested, you have to specify explicitly if you want more than 1. So to get
@@ -242,10 +248,6 @@ What's Missing?
   matlab is not not supported). Both should be reasonably easy to implement,
   but I currently don't need them.
 - Better support for cells.
-- support from numarray (if you also have Numeric you could see whether
-  mlab._array_cast suffices; otherwise with the compatibility layer it should
-  hopefully be easy to create a numarray version, but I currently haven't got
-  the time nor the need)
 
 
 Implementation Notes
@@ -279,12 +281,14 @@ source.
 Troubleshooting
 ---------------
 
-Matlab not in path
+matlab not in path
 ''''''''''''''''''
 ``setup.py`` will call ``matlab`` in an attempt to query the version and other
 information relevant for installation, so it has to be in your ``PATH``
 *unless* you specify everything by hand in ``setup.py``. Of course to be able
-to use ``mlabwrap`` in any way ``matlab`` will have to be in your path anyway.
+to use ``mlabwrap`` in any way ``matlab`` will have to be in your path anyway
+(unless that is you set the environment variable ``MLABRAW_CMD_STR`` that
+specifies how exactly Matlab(tm) should be called).
 
 
 Library path not set
@@ -324,11 +328,22 @@ otherwise modify as requird)::
   mex -f /opt/MatlabR14/bin/engopts.sh engdemo.c
   ./engdemo
 
-
 if you get ``Can't start MATLAB engine`` chances are you're trying to use a
 compiler version that's not in Mathworks's `list of compatible compilers`_ or
 something else with your compiler/Matlab installation is broken that needs to
-be resolved before you can successfully build mlabwrap.
+be resolved before you can successfully build mlabwrap. Chances are that you
+or you institution pays a lot of money to the Mathworks, so they should be
+happy to give you some tech support. Here's what some user who recently
+(2007-02-04) got Matlab 7.04's mex support to work under Ubuntu Edgy after an
+exchange with support reported back; apart from installing gcc-3.2.3, he did
+the following::
+
+  The code I'd run (from within Matlab) is...
+  > mex -setup;     # then select: 2 - gcc Mex options
+  > optsfile = [matlabroot '/bin/engopts.sh'];
+  > mex -v -f optsfile 'engdemo.c';
+  > !./engdemo;
+
 
 Old Matlab version
 ''''''''''''''''''
@@ -379,6 +394,12 @@ another user that it worked for him out-of-the box, but please have a look at
 setup.py you might need to adjust some parameters depending on your
 configuration.
 
+Dylan T Walker writes mingw32 will also work fine, but for some reason
+(distuils glitch?) the following invocation is required::
+
+    > setup.py build --compiler=mingw32
+    > setup.py install --skip-build
+
 
 Support and Feedback
 --------------------
@@ -403,8 +424,9 @@ Credits
 Andrew Sterian for writing pymat without which this module would never have
 existed. 
 
-Matthew Brett contributed numpy compatibility and setup.py improvements to
-further reduce the need for user intervention in setup.py.
+Matthew Brett contributed numpy compatibility and nice setup.py improvements
+(which I adapted a bit) to further reduce the need for manual user
+intervention for installation.
 
 I'm only using linux myself -- so I gratefully acknowledge the help of Windows
 and OS X users to get things running smoothly under these OSes as well.
