@@ -14,10 +14,31 @@
     * add test cases (different array types and 0d arrays and '__array__'able
       types)
 
+  - Notes:
+    * performance is bad, with all likelihood mostly qbecause of the poor
+      quality of Matlab's C-interface. On a machine on which a python function
+      call costs about 2 us, a mlabraw action (I timed put and eval; the cost
+      of evaling doubles for the try/catch variant of eval compared to
+      oldeval; NULL engOutputBuffer has no effect) will cost something like 2
+      ms (1000x increase). The joint overhead added by mlabwrap and
+      round-tripping seems to be about 10x, so the total performance
+      degradation compared to calling a C-function on a scalar can be 4-6
+      orders of magnitude (of course for expensive computations such as
+      inverses on large matrices even this doesn't matter). Interestingly
+      copying arrays is also really slow:
+
+        oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(100000),(-1,));' "put(s,'a',a)"
+        10 loops, best of 3: 19.6 msec per loop
+        oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(100000),(-1,));' "b=a.copy()"
+        10 loops, best of 3: 1.45 msec per loop
+
+      Before trying to optimize, it's presumably worth while attempting a move
+      to ctypes and see whether the ctypes-inherent overhead matters at all.
+
   Revision History
   ================
 
-  mlabraw version 1.0a -- 2007-01-29 Alexander Schmolck (a.schmolck@gmx.net)
+  mlabraw version 1.0b -- 2007-01-29 Alexander Schmolck (a.schmolck@gmx.net)
   ---------------------------------------------------------------------------
   A modified, bugfixed and renamed version of pymat.
    
@@ -83,9 +104,8 @@
   IT HAS BEEN OR IS HEREAFTER ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
 */
-
+#include <Python.h> // !!! must come before standard includes
 #define MLABRAW_VERSION "1.0a"
-
 // We're not building a MEX file, we're building a standalone app.
 #undef MATLAB_MEX_FILE
 
@@ -93,7 +113,7 @@
 #include <windows.h>
 #endif
 
-#include <Python.h>
+
 #ifndef MLABRAW_USE_NUMERIC
 #include <numpy/arrayobject.h>
 # ifndef PyArray_SBYTE
@@ -103,14 +123,31 @@
 #else
 #include <Numeric/arrayobject.h>
 #define npy_intp int
+#define PyArray_SimpleNew PyArray_FromDims
+#define NPY_MAXDIMS 32
 #endif
 
 #include <engine.h>
+#include <matrix.h>
+#ifndef _V7_3_OR_LATER
+#define mwSize int
+#define mwIndex int
+#endif
+
+#include<iostream>
 
 #ifndef max
 #define max(x,y) ((x) > (y) ? (x) : (y))
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #endif
+
+static inline mxArray* _getMatlabVar(PyObject *lHandle, char *lName){
+#ifdef _V6_5_OR_LATER
+  return engGetVariable((Engine *)PyCObject_AsVoidPtr(lHandle), lName);
+#else
+  return engGetArray((Engine *)PyCObject_AsVoidPtr(lHandle), lName);
+#endif
+}
 
 static PyObject *mlabraw_error;
 
@@ -126,7 +163,7 @@ static void _pyassert(const char *pStr)
 // FIXME: add string array support
 static PyStringObject *mx2char(const mxArray *pArray)
 {
-  int buflen;
+  size_t buflen;
   char *buf;
   PyStringObject *lRetval;
   if (mxGetM(pArray) > 1) {
@@ -153,10 +190,10 @@ static PyStringObject *mx2char(const mxArray *pArray)
 
 static PyArrayObject *mx2numeric(const mxArray *pArray)
 {
-  int nd;
-  const int *dims;
+  mwSize nd;
+  npy_intp  pydims[NPY_MAXDIMS];
   PyArrayObject *lRetval = NULL;
-  int lRows, lCols;
+  mwSize lRows, lCols;
   const double *lPR;
   const double *lPI;
 
@@ -170,10 +207,13 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
     return NULL;
   }
 
-  dims = mxGetDimensions(pArray);
-  lRetval = (PyArrayObject *)PyArray_FromDims(nd, const_cast<int *>(dims), 
-                                              mxIsComplex(pArray) ? 
-                                              PyArray_CDOUBLE : PyArray_DOUBLE);
+  { const mwSize *dims;
+    dims = mxGetDimensions(pArray);
+    for (int i=0; i<nd; i++)  pydims[i] = static_cast<npy_intp>(dims[i]); }
+  lRetval = (PyArrayObject *)
+    PyArray_SimpleNew(static_cast<npy_intp>(nd), pydims, 
+                      mxIsComplex(pArray) ?
+                      PyArray_CDOUBLE : PyArray_DOUBLE);
   if (lRetval == NULL) return NULL;
 
   lRows = mxGetM(pArray);
@@ -182,17 +222,17 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
   if (mxIsComplex(pArray)) {
     lPI = mxGetPi(pArray);
 
-    for (int lCol = 0; lCol < lCols; lCol++) {
+    for (mwIndex lCol = 0; lCol < lCols; lCol++) {
       double *lDst = (double *)(lRetval->data) + 2*lCol;
-      for (int lRow = 0; lRow < lRows; lRow++, lDst += 2*lCols) {
+      for (mwIndex lRow = 0; lRow < lRows; lRow++, lDst += 2*lCols) {
         lDst[0] = *lPR++;
         lDst[1] = *lPI++;
       }
     }
   } else {
-    for (int lCol = 0; lCol < lCols; lCol++) {
+    for (mwIndex lCol = 0; lCol < lCols; lCol++) {
       double *lDst = (double *)(lRetval->data) + lCol;
-      for (int lRow = 0; lRow < lRows; lRow++, lDst += lCols) {
+      for (mwIndex lRow = 0; lRow < lRows; lRow++, lDst += lCols) {
         *lDst = *lPR++;
       }
     }
@@ -204,6 +244,7 @@ static PyArrayObject *mx2numeric(const mxArray *pArray)
   return NULL;
 }
 
+//FIXME check complex case
 template <class T>
 static inline void copyNumericVector2Mx(T *pSrc, npy_intp pRows, double *pDst, npy_intp *pStrides)
 {
@@ -405,10 +446,12 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
   return NULL;
 }
 
+//AWMS: FIXME think about non-numeric sequences and whether we should return a cell array instead
 static mxArray *makeMxFromSeq(const PyObject *pSrc)
 {
   mxArray *lRetval = NULL;
-  int i, lSize;
+  mwIndex i;
+  mwSize lSize;
 
   PyArrayObject *lArray = 
     (PyArrayObject *) PyArray_ContiguousFromObject(const_cast<PyObject *>(pSrc), 
@@ -567,12 +610,70 @@ PyObject * mlabraw_eval(PyObject *, PyObject *args)
 {
   //XXX how large should this be?
   const int  BUFSIZE=10000;
+  char* fmt = "try, %s; MLABRAW_ERROR_=0; catch, MLABRAW_ERROR_=1; end;";
   char buffer[BUFSIZE];
+  char cmd[BUFSIZE];
   char *lStr;
   char *retStr = buffer;
   PyObject *ret;
   PyObject *lHandle;
   if (! PyArg_ParseTuple(args, "Os:eval", &lHandle, &lStr)) return NULL;
+  if (! PyCObject_Check(lHandle)) {
+    PyErr_SetString(PyExc_TypeError, "Invalid object passed as mlabraw session handle");
+    return NULL;
+  }
+  sprintf(cmd, fmt, lStr); //FIXME check buffer overflow
+  // std::cout << "DEBUG: CMD " << cmd << std::endl << std::flush; 
+  engOutputBuffer((Engine *)PyCObject_AsVoidPtr(lHandle), retStr, BUFSIZE-1);
+  if (engEvalString((Engine *)PyCObject_AsVoidPtr(lHandle), cmd) != 0) {
+    PyErr_SetString(mlabraw_error, 
+                   "Unable to evaluate string in MATLAB(TM) workspace");
+    return NULL;
+  }
+  {
+    mxArray *lArray = NULL; 
+    char buffer2[BUFSIZE];
+    char *retStr2 = buffer2;
+    bool __mlabraw_error;
+    if (NULL == (lArray = _getMatlabVar(lHandle, "MLABRAW_ERROR_")) ) {
+      PyErr_SetString(mlabraw_error, 
+                      "Something VERY BAD happened whilst trying to evaluate string " 
+                      "in MATLAB(TM) workspace.");
+      return NULL;
+    }
+    __mlabraw_error = (bool)*mxGetPr(lArray);
+    mxDestroyArray(lArray);
+    if (__mlabraw_error) {
+      engOutputBuffer((Engine *)PyCObject_AsVoidPtr(lHandle), retStr2, BUFSIZE-1);
+      if (engEvalString((Engine *)PyCObject_AsVoidPtr(lHandle), 
+                        "disp(subsref(lasterror(),struct('type','.','subs','message')))") != 0) {
+        PyErr_SetString(mlabraw_error, "THIS SHOULD NOT HAVE HAPPENED!!!");
+        return NULL;
+      }
+      PyErr_SetString(mlabraw_error, retStr2 + ((strncmp(">> ", retStr2, 3) == 0) ?  3 : 0));
+      return NULL;
+    }
+  }
+  if (strncmp(">> ", retStr, 3) == 0) { retStr += 3; } //FIXME
+  ret = (PyObject *)PyString_FromString(retStr);
+  return ret;
+}
+
+PyObject * mlabraw_oldeval(PyObject *, PyObject *args)
+{
+  //XXX how large should this be?
+  const int  BUFSIZE=10000;
+  char buffer[BUFSIZE];
+  char *lStr;
+  char *retStr = buffer;
+  PyObject *ret;
+  PyObject *lHandle;
+
+  if (! PyArg_ParseTuple(args, "Os:eval", &lHandle, &lStr)) return NULL;
+  if (! PyCObject_Check(lHandle)) {
+    PyErr_SetString(PyExc_TypeError, "Invalid object passed as mlabraw session handle");
+    return NULL;
+  }
   engOutputBuffer((Engine *)PyCObject_AsVoidPtr(lHandle), retStr, BUFSIZE-1);
   if (engEvalString((Engine *)PyCObject_AsVoidPtr(lHandle), lStr) != 0) {
     PyErr_SetString(mlabraw_error, 
@@ -626,13 +727,12 @@ PyObject * mlabraw_get(PyObject *, PyObject *args)
   PyObject *lDest = NULL;
 
   if (! PyArg_ParseTuple(args, "Os:get", &lHandle, &lName)) return NULL;
-  
-// for matlab >= 6.5 (FIXME UNTESTED)
-#ifdef _V6_5_OR_LATER
-  lArray = engGetVariable((Engine *)PyCObject_AsVoidPtr(lHandle), lName);
-#else
-  lArray = engGetArray((Engine *)PyCObject_AsVoidPtr(lHandle), lName);
-#endif
+  if (! PyCObject_Check(lHandle)) {
+    PyErr_SetString(PyExc_TypeError, "Invalid object passed as mlabraw session handle");
+    return NULL;
+  }
+
+  lArray = _getMatlabVar(lHandle, lName);
   if (lArray == NULL) {
     PyErr_SetString(mlabraw_error, 
                    "Unable to get matrix from MATLAB(TM) workspace");
@@ -645,10 +745,8 @@ PyObject * mlabraw_get(PyObject *, PyObject *args)
     lDest = (PyObject *)mx2numeric(lArray);
   } else {                      // FIXME structs, cells and non-double arrays
     PyErr_SetString(PyExc_TypeError, "Only strings and Numeric arrays are supported.");
-    return NULL;
   }
   mxDestroyArray(lArray);
-
   return lDest;
 }
 
@@ -674,8 +772,13 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
   PyObject *lHandle;
   PyObject *lSource;
   mxArray *lArray = NULL;
-
+  //FIXME should make these objects const
   if (! PyArg_ParseTuple(args, "OsO:put", &lHandle, &lName, &lSource)) return NULL;
+  if (! PyCObject_Check(lHandle)) {
+    PyErr_SetString(PyExc_TypeError, "Invalid object passed as mlabraw session handle");
+    return NULL;
+  }
+
   Py_INCREF(lSource);
 
   if (PyString_Check(lSource)) {
@@ -710,20 +813,14 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
 static PyMethodDef MlabrawMethods[] = {
   { "open",       mlabraw_open,       METH_VARARGS, open_doc },
   { "close",      mlabraw_close,      METH_VARARGS, close_doc },
-  { "eval",       mlabraw_eval,       METH_VARARGS, eval_doc },
+  { "oldeval",    mlabraw_oldeval,    METH_VARARGS, ""       }, 
+  { "eval",       mlabraw_eval,       METH_VARARGS, eval_doc },  //FIXME doc
   { "get",        mlabraw_get,        METH_VARARGS, get_doc },
   { "put",        mlabraw_put,        METH_VARARGS, put_doc },
   { NULL,         NULL,               0           , NULL}, // sentinel
 };
 
-// FIXME untested WIN32
-#ifdef WIN32
-extern "C" __declspec( dllexport ) void initmlabraw(void);
-#else
-extern "C" void initmlabraw(void);
-#endif
-
-void initmlabraw(void)
+PyMODINIT_FUNC initmlabraw(void)
 {
   PyObject *module = 
     Py_InitModule4("mlabraw",
@@ -743,7 +840,7 @@ void initmlabraw(void)
 "\n"
 "Copyright & Disclaimer\n"
 "======================\n"
-"Copyright (c) 2002, 2003 Alexander Schmolck <a.schmolck@gmx.net>\n"
+"Copyright (c) 2002-2007 Alexander Schmolck <a.schmolck@gmx.net>\n"
 "\n"
 "Copyright (c) 1998,1999 Andrew Sterian. All Rights Reserved. mailto: steriana@gvsu.edu\n"
 "\n"
@@ -771,11 +868,8 @@ void initmlabraw(void)
 
   /* This macro, defined in arrayobject.h, loads the Numeric API interface */
   import_array();
-
-  PyObject *dict = PyModule_GetDict(module);
-  PyObject *item = PyString_FromString(MLABRAW_VERSION);
-  PyDict_SetItemString(dict, "__version__", item);
-  Py_DECREF(item);
+  PyModule_AddStringConstant(module, "__version__", MLABRAW_VERSION);
   mlabraw_error = PyErr_NewException("mlabraw.error", NULL, NULL);
-  PyDict_SetItemString(dict, "error", mlabraw_error);
+  Py_INCREF(mlabraw_error);
+  PyModule_AddObject(module, "error", mlabraw_error);
 }
