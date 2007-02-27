@@ -1,0 +1,120 @@
+oc:~/> python -m timeit -n 10 -s 'from mlabraw import *; s=open()' "eval(s, '1;')"                         2:00PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+10 loops, best of 3: 1.8 msec per loop
+oc:~/> python -m timeit -n 100 -s 'from mlabraw import *; s=open()' "eval(s, '1;')"                        2:00PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.83 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'from mlabraw import *; s=open()' "seval(s, '1;')"         2:03PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 4.28 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'from mlabraw import *; s=open()' "seval(s, '1;')"         2:04PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 4.45 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'from mlabraw import *; s=open()' "eval(s, '1;')"          2:04PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.87 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'from mlabraw import *; s=open()' "eval(s, 'sin(3);')"     2:04PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 2 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'from mlabraw import *; s=open()' "eval(s, 'sin(3);')"     2:05PM
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.95 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "math.sin(3)"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.11 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "[math.sin(3)]"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.58 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "[math.sin(3)]"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.6 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "eval(s, 'sin(3);')"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.99 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "eval(s, 'sin(3);')"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.87 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "eval(s, 'sin(3);')"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 2 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "eval(s, 'sin(3);')"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.92 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "eval(s, 'sin(3);')"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 1.97 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math; from mlabraw import *; s=open()' "seval(s, 'sin(3);')"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+100 loops, best of 3: 4.49 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 100 -s 'import math' "(lambda x:math.sin(x))(3)"                  2:30PM
+100 loops, best of 3: 1.53 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import math' "(lambda x:math.sin(x))(3)"                         2:30PM
+1000000 loops, best of 3: 1.59 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(1000)"                               3:27PM
+100000 loops, best of 3: 3.53 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(1000)"                               3:27PM
+100000 loops, best of 3: 3.54 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(100)"                                3:28PM
+100000 loops, best of 3: 2.25 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(1)"                                  3:28PM
+1000000 loops, best of 3: 1.71 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(10)"                                 3:28PM
+1000000 loops, best of 3: 1.87 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(100)"                                3:28PM
+100000 loops, best of 3: 2.15 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(1000)"                               3:28PM
+100000 loops, best of 3: 3.55 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(1000)"                               3:28PM
+100000 loops, best of 3: 3.6 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(10000)"                              3:28PM
+100000 loops, best of 3: 17.5 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(1000)"                               3:28PM
+100000 loops, best of 3: 3.53 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.random.random(1000)"                        3:31PM
+10000 loops, best of 3: 48.5 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.random.random(1000)"                        3:31PM
+10000 loops, best of 3: 49.5 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.random.random(10000)"                       3:31PM
+1000 loops, best of 3: 454 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.random.random(10000)"                       3:31PM
+1000 loops, best of 3: 453 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.random.random(100000)"                      3:31PM
+100 loops, best of 3: 5.85 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.random.random(10000)"                       3:32PM
+1000 loops, best of 3: 454 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(10000)"                              3:32PM
+100000 loops, best of 3: 17.4 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(10000)"                              3:32PM
+100000 loops, best of 3: 17.6 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(10000.0)"                            3:39PM
+10000 loops, best of 3: 30.4 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -s 'import numpy' "numpy.arange(10000.0)"                            3:39PM
+10000 loops, best of 3: 30.1 usec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import *; from mlabraw import *; s=open(); a=arange(1);' "put(s,'a',a)"
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+<timeit-src>:2: SyntaxWarning: import * only allowed at module level
+10 loops, best of 3: 2.01 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange; from mlabraw import open, put, eval; s=open(); a=arange(1000);' "put(s,'a',a)"
+10 loops, best of 3: 2.05 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(1000),(10,100));' "put(s,'a',a)"
+10 loops, best of 3: 2.16 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabwrap import mlab; a=reshape(arange(1000),(10,100));' "mlab.sin(1)"
+10 loops, best of 3: 19.7 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabwrap import mlab; a=reshape(arange(1000),(10,100));' "mlab.sin(a)"
+10 loops, best of 3: 20.8 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabwrap import mlab; a=reshape(1,1);' "mlab.sin(a)"
+10 loops, best of 3: 20.7 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(10000),(100,100));' "put(s,'a',a)"
+10 loops, best of 3: 3.2 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(10000),(100,100));' "put(s,'a',a)"
+10 loops, best of 3: 3.26 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(100000),(1000,100));' "put(s,'a',a)"
+10 loops, best of 3: 20.2 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(100000),(1,-1));' "put(s,'a',a)"
+10 loops, best of 3: 20.1 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(100000),(-1,));' "put(s,'a',a)"
+10 loops, best of 3: 19.6 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(100000),(-1,));' "b=a.copy()"
+10 loops, best of 3: 1.45 msec per loop
+oc:~/mlabwrap-1.0b/> python -m timeit -n 10 -s 'from numpy import arange, reshape; from mlabraw import open, put, eval; s=open(); a=reshape(arange(1),(1,-1));' "put(s,'a',a)"
+10 loops, best of 3: 1.82 msec per loop
