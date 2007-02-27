@@ -5,8 +5,9 @@
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
 ## o created: 2003-07-00 00:00:00+00:00
 ## o last modified: $Date$
-
-import sys, os
+## o Note: Some optional but useful tests require
+##   <http://mexcdf.sourceforge.net/>!
+import sys, os, re
 try:
     import numpy
     from numpy.random import rand, randn
@@ -20,7 +21,7 @@ try: # python >= 2.3 has better mktemp
     from tempfile import mkstemp as _mkstemp
     mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
 except ImportError: pass
-
+degensym_proxy = lambda s, rex=re.compile(r'(PROXY_VAL)\d+'): rex.sub(r'\1',s)
 
 
 import unittest
@@ -42,7 +43,7 @@ mlab._dont_proxy['cell'] = True
 WHO_AT_STARTUP = mlab.who()
 mlab._dont_proxy['cell'] = False
 # FIXME should do this differentlya
-funnies = without(WHO_AT_STARTUP, ['HOME', 'V', 'WLVERBOSE'])
+funnies = without(WHO_AT_STARTUP, ['HOME', 'V', 'WLVERBOSE', 'MLABRAW_ERROR_'])
 if funnies:
     print >> sys.stderr, "Hmm, got some funny stuff in matlab env: %s" % funnies
 
@@ -156,27 +157,67 @@ class mlabwrapTC(NumericTestCase):
                 if len(newA):
                     self.assertNotEqual(newA, mlab._get('a'))
             self.assertEqual(a, a1)                
-            mlab.clear('a')                
-            # the tricky diversity of empty arrays
-            mlab._set('a', [[]])
-            self.assertEqual(mlab._get('a'), numpy.zeros((1, 0), 'd'))
-            mlab._set('a', numpy.zeros((0,0)))
-            self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd'))
-            mlab._set('a', [])
-            self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd'))
-            # 0d
-            mlab._set('a', -2)
-            self.assertEqual(mlab._get('a'), array([       [-2.]]))
-            mlab._set('a', array(-2))
-            self.assertEqual(mlab._get('a'), array([       [-2.]]))
-            # complex 1D
-            mlab._set('a', [1+3j, -4+2j, 6-5j])
-            self.assertEqual(mlab._get('a'),array([[1.+3.j],[-4.+2.j],[6.-5.j]]))
-            # complex 2D
-            mlab._set('a', [[1+3j, -4+2j, 6+5j], [9+3j, 1, 3-2j]])
-            self.assertEqual(mlab._get('a'), array([[1.+3.j,-4.+2.j,6.+5.j]
-                                                    ,[9.+3.j,1.+0.j,3.-2.j]]))
             mlab.clear('a')
+        # Complex
+        for i in range(30):
+            if i % 4: # every 4th is a flat vector
+                a = rand(randrange(1,20));
+                a = a + 1j*rand(*a.shape)
+            else:
+                #FIXME add other ranks and shapes
+##                 if i % 3:
+##                     a = rand(randrange())
+                a = rand(randrange(1,3),randrange(1,3)) + 1j*rand(randrange(1,3),randrange(1,3))
+            a1 = a.copy()
+            mlab._set('a', a)
+            if numpy.rank(a) == 2:
+                self.assertEqual(a, mlab._get('a'))
+            else:
+                self.assertEqual(a, numpy.ravel(mlab._get('a')))
+            self.assertEqual(a, a1)
+            # make sure strides also work OK!
+            mlab._set('a', a[::-2])
+            if numpy.rank(a) == 2:
+                self.assertEqual(a[::-2], mlab._get('a'))
+            else:
+                self.assertEqual(a[::-2], numpy.ravel(mlab._get('a')))
+            self.assertEqual(a, a1)                
+            if numpy.rank(a) == 2:
+                mlab._set('a', a[0:-3:3,::-1])
+                self.assertEqual(a[0:-3:3,::-1], mlab._get('a').astype('D')) # XXX
+                # test there are no aliasing problems
+                newA = mlab._get('a')
+                newA -= 1e4
+                self.assertEqual(a,a1)
+                if len(newA):
+                    self.assertNotEqual(newA, mlab._get('a'))
+            self.assertEqual(a, a1)                
+            mlab.clear('a')
+
+            
+        # the tricky diversity of empty arrays
+        mlab._set('a', [[]])
+        self.assertEqual(mlab._get('a'), numpy.zeros((1, 0), 'd'))
+        mlab._set('a', numpy.zeros((0,0)))
+        self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd'))
+        mlab._set('a', [])
+        self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd'))
+        # complex empty
+        mlab._set('a', numpy.zeros((0,0), 'D'))
+        self.assertEqual(mlab._get('a'), numpy.zeros((0, 0), 'd')) #XXX
+        # 0d
+        mlab._set('a', -2)
+        self.assertEqual(mlab._get('a'), array([       [-2.]]))
+        mlab._set('a', array(-2))
+        self.assertEqual(mlab._get('a'), array([       [-2.]]))
+        # complex 1D
+        mlab._set('a', [1+3j, -4+2j, 6-5j])
+        self.assertEqual(mlab._get('a'),array([[1.+3.j],[-4.+2.j],[6.-5.j]]))
+        # complex 2D
+        mlab._set('a', [[1+3j, -4+2j, 6+5j], [9+3j, 1, 3-2j]])
+        self.assertEqual(mlab._get('a'), array([[1.+3.j,-4.+2.j,6.+5.j]
+                                                ,[9.+3.j,1.+0.j,3.-2.j]]))
+        mlab.clear('a')
         # try basic error handling
         self.failUnlessRaises(TypeError, mlab._set, 'a', [[[1]]])
         self.failUnlessRaises(MlabError, mlab._get, 'dontexist')
@@ -250,12 +291,12 @@ class mlabwrapTC(NumericTestCase):
         mlab._dont_proxy['cell'] = False
         mlab.clear('foo')
         self.assertRaises(MlabError, mlab._get, 'foo')
-        assert `sct` == ("<MlabObjectProxy of matlab-class: 'struct'; "
-                         "internal name: 'PROXY_VAL0__'; has parent: no>\n"
-                         "1x2 struct array with fields:\n"
-                         "    type\n    color\n    x\n\n")
+        assert degensym_proxy(repr(sct)) == (
+            "<MlabObjectProxy of matlab-class: 'struct'; "
+            "internal name: 'PROXY_VAL__'; has parent: no>\n"
+            "1x2 struct array with fields:\n"
+            "    type\n    color\n    x\n\n")
         #FIXME: add tests for assigning and nesting proxies
-
         ## ensure proxies work OK as arguments
         self.assertEqual(mlab.size(sct), array([[1., 2.]]))
         self.assertEqual(mlab.size(sct, 1), array([[1]]))
@@ -264,7 +305,7 @@ class mlabwrapTC(NumericTestCase):
         self.assertRaises(MlabError, mlab.svd, sct)
         self.assertEqual(mlab.size(sct, [2]), array([[2]]))
         mlab._dont_proxy['cell'] = True
-        assert without(mlab.who(), WHO_AT_STARTUP) == (['PROXY_VAL0__', 'PROXY_VAL1__'])
+        assert map(degensym_proxy,without(mlab.who(), WHO_AT_STARTUP)) == (['PROXY_VAL__', 'PROXY_VAL__'])
         # test pickling
         pickleFilename = mktemp()
         f = open(pickleFilename, 'wb')
@@ -290,6 +331,7 @@ class mlabwrapTC(NumericTestCase):
         mlab._do("disp 'hallo'" ,nout=0, handle_out=x.append)
         assert x[0] == 'hallo\n'
         mlab._dont_proxy['cell'] = False
+        
     def testAnEvenSubtlerProxyStuff(self):
         "time for some advanced proxied __getitem__ and __setitem___."
         if not mlab.exist('netcdf'):
@@ -337,12 +379,32 @@ class mlabwrapTC(NumericTestCase):
 ##             mlab._set('d2', ncf['dimension2'])
         finally:
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
-            
+    def testMlabraw(self):
+        """A few explicit tests for mlabraw"""
+        import mlabraw
+        #print "test mlabraw"
+        self.assertRaises(TypeError, mlabraw.put, 33, 'a',1)
+        self.assertRaises(TypeError, mlabraw.get, object(), 'a')
+        self.assertRaises(TypeError, mlabraw.eval, object(), '1')
+        self.assertEqual(mlabraw.eval(mlab._session, r"fprintf('1\n')"),'1\n')
+        try:
+            self.assertEqual(mlabraw.eval(mlab._session, r"1"),'')
+        finally:
+            mlabraw.eval(mlab._session,'clear ans')
+        #print "tested mlabraw"
+    
+    def testOrder(self):
+        """"Testing order flags cause no problems""""
+        try: import numpy
+        except ImportError: return
+        fa=numpy.array([[1,2,3],[4,5,6]],order='F')
+        self.assertEqual(mlab.conj(fa),fa)
+        self.assertEqual([[2]],mlab.subsref(fa, mlab.struct('type', '()', 'subs',mlab._do('{{1,2}}'))))
 
 suite = TestSuite(map(unittest.makeSuite,
                                (mlabwrapTC,
                                 )))
-unittest.TextTestRunner().run(suite)
+unittest.TextTestRunner(verbosity=2).run(suite)
 
 #FIXME strangely enough we can't test this in the function!
 import gc
@@ -351,5 +413,5 @@ mlab._dont_proxy['cell'] = True
 # XXX got no idea where HOME comes from, not there under win
 assert without(mlab.who(), WHO_AT_STARTUP) == ['bar']
 mlab.clear()
-assert mlab.who() == [] == mlab._do('{}')
+assert without(mlab.who(), ['MLABRAW_ERROR_']) == [] == mlab._do('{}')
 mlab._dont_proxy['cell'] = False
