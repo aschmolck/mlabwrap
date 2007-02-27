@@ -66,7 +66,7 @@ def matlab_params(matlab_command_str):
               r"fprintf(fid, '%s\n%s\n%s\n', version, matlabroot, computer);" + \
               "fclose(fid); quit"
     try:
-        os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup) #HACK
+        os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup)) #HACK
         ver, pth, platform = open(param_fname).readlines()
         return (float(re.match(r'\d+.\d+',ver).group()),
                 pth.rstrip(), platform.rstrip().lower())
