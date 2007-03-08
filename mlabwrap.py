@@ -168,7 +168,7 @@ See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
-__version__ = "1.0a"
+__version__ = "1.0b2"
 __author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
 import warnings
 from pickle import PickleError
@@ -269,6 +269,7 @@ class MlabObjectProxy(object):
             mlabraw.eval(mlab._session, 'clear %s;' % mlab_name)
         finally:
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
+            # FIXME clear'ing in case of error
         
     def __repr__(self):
         output = []
@@ -396,7 +397,7 @@ class MlabWrap(object):
     def _var_type(self, varname):
         mlabraw.eval(self._session, "TMP_CLS__ = class(%s);" % varname) #FIXME for funcs we would need ''s
         res_type = mlabraw.get(self._session, "TMP_CLS__")
-        mlabraw.eval(self._session, "clear TMP_CLS__;")
+        mlabraw.eval(self._session, "clear TMP_CLS__;") # unlikely to need try/finally to ensure clear
         return res_type
     
     def _make_proxy(self, varname, parent=None, constructor=MlabObjectProxy):
@@ -410,19 +411,7 @@ class MlabWrap(object):
         res = constructor(self, proxy_val_name, parent)
         self._proxies[proxy_val_name] = res
         return res
-
-    ## this should be obsoleted by the changes to mlabraw
-##     def _as_mlabable_type(self, arg):
-##         # that should now be handled by mlabraw...
-##         if   isinstance(arg, (int, float, long, complex)):
-##             return numpy.array([arg])
-##         if operator.isSequenceType(arg):
-##             return arg
-##         else:
-##             try:
-##                 return arg.__array__()
-##             except AttributeError:
-##                 raise TypeError("Unsuitable argument type: %s" % type(arg))
+    
     def _get_cell(self, varname):
         # XXX can currently only handle ``{}`` and 1D cells
         mlabraw.eval(self._session,
@@ -454,7 +443,7 @@ class MlabWrap(object):
         res = []
         for varname in varnames:
             res.append(self._get(varname))
-        mlabraw.eval(self._session, "clear('%s');" % "','".join(varnames))
+        mlabraw.eval(self._session, "clear('%s');" % "','".join(varnames)) #FIXME wrap try/finally?
         return res
     
     def _do(self, cmd, *args, **kwargs):
@@ -577,15 +566,17 @@ class MlabWrap(object):
             
     # XXX this method needs some refactoring, but only after it is clear how
     # things should be done (e.g. what should be extracted from docstrings and
-    # how, and how)
+    # how)
     def __getattr__(self, attr):
         """Magically creates a wapper to a matlab function, procedure or
         object on-the-fly."""
-        # print_ -> print
+        if re.search(r'\W', attr): # work around ipython <= 0.7.3 bug
+            raise ValueError("Attributes don't look like this: %r" % attr)
         if attr.startswith('__'): raise AttributeError, attr
         assert not attr.startswith('_') # XXX
+        # print_ -> print
         if attr[-1] == "_": name = attr[:-1]
-        else              : name = attr
+        else             : name = attr
         typ = self._do("exist('%s')" % name)
         # make sure we get an int out of this (mainly for `Matrix`)
         try:
