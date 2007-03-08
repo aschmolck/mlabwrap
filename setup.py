@@ -26,10 +26,21 @@ SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already
 #   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/MATLAB_DIR/extern/lib/glnx86/
 
 ########################### WINDOWS ONLY ###########################
-# only needed for Windows Visual Studio (tm) build
-# (adjust if necessary if you use a different version/path of VC)
+#  Option 1: Visual Studio
+#  -----------------------
+#  only needed for Windows Visual Studio (tm) build
+#  (adjust if necessary if you use a different version/path of VC)
 VC_DIR='C:/Program Files/Microsoft Visual Studio .NET 2003/vc7'
 # NOTE: You'll also need to adjust PLATFORM_DIR accordingly 
+#
+#  Option 2: Borland C++
+#  ---------------------
+#  uncomment (and adjust if necessary) the following lines to use Borland C++
+#  instead of VC:
+#
+#VC_DIR=None
+#PLATFORM_DIR="win32/borland/bc54"
+
 
 ####################################################################
 ### NO MODIFICATIONS SHOULD BE NECESSARY BEYOND THIS POINT       ###
@@ -112,8 +123,12 @@ else:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/extern/lib/" + PLATFORM_DIR]
 MATLAB_INCLUDE_DIRS = [MATLAB_DIR + "/extern/include"] #, "/usr/include"
 if WINDOWS:
-     MATLAB_LIBRARY_DIRS += [VC_DIR + "/lib"]
-     MATLAB_INCLUDE_DIRS += [VC_DIR + "/include", VC_DIR + "/PlatformSDK/include"]
+    if VC_DIR:
+        MATLAB_LIBRARY_DIRS += [VC_DIR + "/lib"]
+        MATLAB_INCLUDE_DIRS += [VC_DIR + "/include", VC_DIR + "/PlatformSDK/include"]
+    else:
+        print "Not using Visual C++; fiddling paths for Borland C++ compatibility"
+        MATLAB_LIBRARY_DIRS = [mld.replace('/','\\') for mld in  MATLAB_LIBRARY_DIRS]
 elif [mld for mld in MATLAB_LIBRARY_DIRS if os.getenv('LD_LIBRARY_PATH',"").find(mld) == -1]:
     print >> sys.stderr, """
     DON'T FORGET TO DO SOMETHING LIKE:
@@ -128,7 +143,7 @@ if USE_NUMERIC:
     DEFINE_MACROS.append(('MLABRAW_USE_NUMERIC', 1))
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "1.0b",
+       version = "1.0b2",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
