@@ -78,10 +78,12 @@ def matlab_params(matlab_command_str):
               "fclose(fid); quit"
     try:
         os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup)) #HACK
-        ver, pth, platform = open(param_fname).readlines()
+        fh = None; fh = open(param_fname)
+        ver, pth, platform = fh
         return (float(re.match(r'\d+.\d+',ver).group()),
                 pth.rstrip(), platform.rstrip().lower())
     finally:
+        if fh: fh.close()
         os.remove(param_fname)
 
 
@@ -143,7 +145,7 @@ if USE_NUMERIC:
     DEFINE_MACROS.append(('MLABRAW_USE_NUMERIC', 1))
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "1.0b2",
+       version = "1.0",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
