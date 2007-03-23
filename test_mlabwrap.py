@@ -331,7 +331,7 @@ class mlabwrapTC(NumericTestCase):
         mlab._do("disp 'hallo'" ,nout=0, handle_out=x.append)
         assert x[0] == 'hallo\n'
         mlab._dont_proxy['cell'] = False
-        
+        self.assertRaises(ValueError, getattr, mlab, "buggy('ipython lookup')")
     def testAnEvenSubtlerProxyStuff(self):
         "time for some advanced proxied __getitem__ and __setitem___."
         if not mlab.exist('netcdf'):
@@ -394,7 +394,7 @@ class mlabwrapTC(NumericTestCase):
         #print "tested mlabraw"
     
     def testOrder(self):
-        """"Testing order flags cause no problems""""
+        """Testing order flags cause no problems"""
         try: import numpy
         except ImportError: return
         fa=numpy.array([[1,2,3],[4,5,6]],order='F')
