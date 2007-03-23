@@ -168,7 +168,7 @@ See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
-__version__ = "1.0b2"
+__version__ = "1.0"
 __author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
 import warnings
 from pickle import PickleError
@@ -672,7 +672,7 @@ MlabError = mlabraw.error
 
 def saveVarsInMat(filename, varNamesStr, outOf=None, **opts):
     """Hacky convinience function to dump a couple of python variables in a
-       .mat file. See `awmsdev.saveVars`.
+       .mat file. See `awmstools.saveVars`.
     """
     from mlabwrap import mlab
     filename, varnames, outOf = awmstools.__saveVarsHelper(
