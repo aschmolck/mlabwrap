@@ -1,0 +1,168 @@
+== Limitations and issue with current design and implementation ==
+
+ - `mlabraw.cpp` -- can we use `ctypes` instead?
+
+ - no > 2D support (not a hard problem as such; but first one ought to see if
+   migration to ctypes is feasible)
+
+ - Conversion behavior. When to proxy and how. When to offer the ability to
+  select/fine-tune the default behavior, and how. 
+
+ - marshalling behavior (all numeric dtypes to `double`, all sequences to
+  `array`); handling of leading/trailing unit dimensions (e.g.
+  `_flatten_col_vecs` and `_flatten_row_vecs`)
+
+ - Proxy behavior: in particular
+   - how should indexing work? 
+     - how much 
+     - how do we handle the intrinsic/extrinsic dimensionality impedence
+       mismatch? Possible solutions include
+
+       - squeezing leading/trailing unit dimensions. Advantage: automatic and
+         cheap; also applicable to conversion. Difficulty: which one, leading
+         or trailing? Whilst `[[1]] -> 1` will typically not cause issues (1x1
+         matrices are rare), 1 element vectors ''do'' commonly occur.
+       - copy matlab's behavior (i.e. `x[i]` does flat indexing, `x[i,j]`
+         treats x as a matrix)
+       - inspecting `size(x)` on indexing `x` in order to compute the result
+         dimensionality.
+
+== Design Goals ==
+== Compatibility ==
+=== Usability ===
+
+ * where possible give matlab the feel of a python library
+
+==== Installation ====
+Painless Install:
+ - no setup.py editing required for common scenarios (*XXX* having to set
+  `LD_LIBRARY_PATH` is kind of nasty, but I can't see an easy way around this)
+ - no scipy dependency
+ - setuptools support
+
+== Infrastructure ==
+ - low-volume user mailing list specific to mlabwrap seems desirable (so keep
+  mlabwrap@sourceforge.net for the time being)
+
+== Differences between numpy and matlab that complicate bridging ==
+
+ multiple value return:: essentially a solved issue (the `nout` arg seems to
+ handle this fine)
+
+ fastest varying index:: matlab is column major, python is row major; apart
+ from performance penalities when converting this also has implications for
+ how data is preferentially arranged. This also interacts with dimensionality,
+ see below. 
+
+ dimensionality:: I can think of two sane and internally consistent ways to
+ handle array dimensionality:
+
+  intrinsic dimensionality:: In numpy dimensionaliity is intrinsic to an array
+     (e.g. `a = array(1)` has dimensionality, i.e. `numpy.ndims(a)`, 0 and
+     `a[0,0,0,0]` will throw an error). 
+
+  sane context dependent dimensionality (scdd):: In matlab dimensionality is
+  context
+     dependent (e.g. `a=1; a(1,1,1,1)` will work fine). A sane way to have
+     done this would be to conceptualize everything as an array with an
+     infinite number of leading (or trailing; if one desires column major)
+     unit dimensions and determine the desired actual dimensionality by
+     context (ignoring leading unit dimensions by default). In other words,
+     under that scheme `1, [1], [[1]], [[[1]]]` are all the same object with
+     the same physical representation and when context doesn't determine the
+     dimensionality (e.g. the number of subscripts when indexing), one assumes
+     by default the dimensionality of the arrays sans leading(/trailing) unit
+     dimensions. The (IMO minor) advantage of this scheme is that it is
+     sometimes convenient to regard on and the same object as e.g. a scalar or
+     a 1x1 matrix, depending on context (as is often done in math). The (IMO
+     major) disadvantage is that one looses the ability to regard arrays as
+     nested container types (e.g. in numpy `a[0]` is legal and has an obvious
+     meaning for any `a` with non-zero dimensions and it holds that
+     `ndims(a[0]) == ndims(a)-1`. But this equality doesn't hold in scdd and
+     without some arbitrary convention (such as matlab's flat-indexing) `a[0]`
+     is not even meaningful when there is more than one non-unit dimension).
+
+  Of course matlab being matlab doesn't implement either of these schemes
+  opting for something more messy instead: I 'think' the idea basically is that
+  everything is a matrix, unless it has too many (non-unit trailing)
+  dimensions. As an example, in the 'sane context dependent dimensionality'
+  scheme detailed above `ndims(a)` would be `[]`; in matlab it is `2`, as is
+  `ndims(ones(1,1,1))`, `ndims(ones(2,1,1))`, but ''not'' `ndims(ones(1,1,2))`
+  which is `3`.
+
+ indexing and attribute access and modification:: 
+
+  `{}` vs `()`:: currently done with the `_` hack; 'TODO' maybe add a way to
+  associate `x[key]` with `{}` indexing when `x` belongs to certain set of
+  classes.
+ 
+  `subsref` and `subsasgn` are non-recursive:: By that I mean that whears in
+  python (only) `x.y' gets to handle the attribute access to `z` in `x.y.z`,
+  in matlab it's actually `x`.  Python's behavior becomes an issue with the
+  current (i.e. mlabwrap 1.0) scheme for assigning to FIXME reference
+
+  1-based indexing and `end` arithmetic::
+ 
+ dtypes:: Although matlab has `logical` (bool) `{u,}int{8,16,32,64}` as well
+ as `single`, `double` and `char` arrays and therefore a pretty good
+ correspondence to the available numpy dtypes (apart from the fact that
+ {single,double}-floats are conflated with {single,double}-complex floats),
+ the mapping is complicated by the fact that `double` takes a very dominant
+ role in matlab (e.g. IIRC the various int types only recently grew even the
+ standard arithmetic operators and have hence largely only been used to
+ represent integral values when using `double`s was somehow too expensive or
+ otherwise impossible). Currently mlabwrap "solves" this by just converting
+ everything (save strings) to `double`, but with matlab's growing emancipation
+ of non- 64-bit float matrix datatypes, this may become a less attractive
+ trade-noff.
+
+ call-by-value, copy-on write (matlab) vs. proper object identity (python)::
+ Matlab
+ 
+
+== Compatibility ==
+ * 1.0 version should retain compatibility to matlab > 5, python >= 2.3 and
+  Numeric as well as numpy (don't break existing code with 1.0 release)
+ * next version:
+ * Numeric compatibility axed immediately after 1.0
+ * compatibility to V >= 6.5 good enough (XXX: when did int types grow
+   arithmetic)?
+ * require python 2.5 (gives us relative imports, ctypes, with-statements)?
+ * Prescriptions for writing upward compatible code: always pass in
+   `float64` arrays (rather than `int*` arrays) if you want to get out and
+   don't use lists (which may convert to `cell`s in future versions) if you
+   want `double`s in matlab.
+
+
+=== Hacks at our disposal to fine-tune (conversion etc.) behavior ===
+Generally speaking Matlab and python are semantically too different to allow . 
+
+ * leveraging python's richer syntax
+  * keyword arguments (e.g. ``nout``)
+
+  * nasty: use the fact that names may not begin with '_' in matlab to give
+    ``mlab.foo`` different semantics from ``mlab._foo``; currently this is
+    only used to handle python keywords (e.g. ``mlab._print``)
+
+ * customization variables (e.g. ``_array_cast``, ``_flatten_col_vecs``)
+  * Downside: python's weak support for dynamic scope makes this unattractive
+    (by and large anything governing pervasive behavior (e.g. number of
+    significant digits in computations; printing precision; floating modes
+    etc.) ought to be dynamically scoped; statically scoped global vars as in
+    python suck; however python 2.5's ``with`` statement can be used as a
+    (poor man's?) ``fluid-let``); however
+
+ * proxying with transparent auto-conversion
+
+== Stuff to look at ==
+* ctypes
+* [http://rpy.sourceforge.net/download.html rpy] and other python-x bridges
+
+
+== Open questions ==
+
+* Is the expound docstring stuff needed
+* setup.py windows
+* distutils vs. [http://svn.scipy.org/svn/numpy/trunk/numpy/doc/DISTUTILS.txt
+  numpy.distutils] vs. [http://peak.telecommunity.com/DevCenter/setuptools
+  setuptools]
