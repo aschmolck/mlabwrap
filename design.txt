@@ -367,6 +367,9 @@ be marshaled (largely so that subattribute assignment can be made to work)
  * complexity: this scheme is much more complicated than the others proposed
  here
 
+Summary: I think pure marshaling ought to be available as option (an maybe
+pure-proxying, too), but I suspect that a hybrid approach will make the best
+default.
 
 === Hacks at our disposal to fine-tune (conversion etc.) behavior ===
 
