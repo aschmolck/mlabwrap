@@ -1,33 +1,55 @@
 ==============
-mlabwrap v1.0b
+mlabwrap v1.0
 ==============
 
 :copyright: 2003-2007 Alexander Schmolck
-:date: 2007-02-27
+:date: 2007-04-10
+
+..
+
 
 .. contents:: 
 
 Description
 -----------
-
-A high-level python to `Matlab(tm)`_ bridge. Let's matlab look like a normal
+A high-level python to `Matlab(tm)`_ bridge. Let's Matlab look like a normal
 python library.
+
+    Thanks for your terrific work on this very-useful Python tool!
+
+    -- George A. Blaha, Senior Systems Engineer, 
+       Raytheon Integrated Defense Systems
+
+
 
 .. _Matlab(tm): 
    http://www.mathworks.com
 
+
+
 News
 ----
 
-**2007-02-27** version 1.0b brings python 2.5 compatibility and various small
-fixes (improved error handling for 7.3 etc.)
+**2007-04-10** 1.0final is out! Compared to the last beta, setup.py should now
+work better under windows (Borland C++ support, inter alia). Also included is
+a work-around for an ipython bug that causes spurious error message when using
+mlabwrap with some versions of ipython. 
 
-**2007-02-02** version 1.0a3 should hopefully bring matlab 7.3 compatibility
-(I can't test this myself).
+This is the last version with optional Numeric support. Future versions of
+mlabwrap will be hosted as a scikits project on scipy (see
+<http://www.scipy.org/MlabWrap>), require numpy and adopt the scipy package
+structure (i.e. ``import mlabwrap`` -> ``import scikits.mlabwrap``), which
+also implies a change from distutils to setuptools. 
 
-**2007-01-29** After some longer release hiatus version 1.0a brings numpy_ and
-64-bit compatibility as well as improved ``setup.py``; however this is still
-an *alpha version*; memory violations and other nasty things may happen!
+The source-forge hosted `project mailing list`_ will remain the prefered place
+for users who seek support or want to provide feedback.
+
+**Compatibility Note:** Since matlab is becoming increasingly less
+``double``-centric, the default conversion rules might change in post 1.0
+mlabwrap; so whilst using ``mlab.plot([1,2,3])`` rather than
+``mlab.plot(array([1.,2.,3.]))`` is fine for interactive use as in the
+tutorial below, the latter is recommended for production code.
+
 
 License
 -------
@@ -38,12 +60,12 @@ license, see the mlabraw.cpp.
 Installation
 ------------
 
-If you're lucky (linux, matlab binary in ``PATH`` and the matlab libraries in
-``LD_LIBRARY_PATH``)
+If you're lucky (linux, Matlab binary in ``PATH`` and the Matlab libraries in
+``LD_LIBRARY_PATH``)::
 
   python setup.py install
 
-If the matlab libraries are not in your ``LD_LIBRARY_PATH`` the above command
+If the Matlab libraries are not in your ``LD_LIBRARY_PATH`` the above command
 will print out a message how to rectify this (you will need to enter something
 like ``export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/MatlabR14/bin/glnx86`` in
 the shell (assuming you're using bash or zsh); and adding that line to your
@@ -53,7 +75,7 @@ If things do go awry, see Troubleshooting_.
 
 Although I myself use only linux, mlabwrap should work with python>=2.3 (even
 python 2.2, with minor coaxing) and either numpy_ (recommended) or Numeric
-(obsolete) installed and matlab 6, 6.5 or 7 under unix(tm), OS X (tm) and
+(obsolete) installed and Matlab 6, 6.5 or 7 under unix(tm), OS X (tm) and
 windows (see `OS X`) on 32- or 64-bit machines.
 
 Documentation
@@ -90,7 +112,7 @@ Tutorial
 
 Legend: [...] = omitted output
 
-Let's say you want to do use matlab(tm) to calculate the singular value
+Let's say you want to do use Matlab(tm) to calculate the singular value
 decomposition of a matrix.  So first you import the `mlab` pseudo-module and
 Numeric:
 
@@ -122,14 +144,14 @@ array([[ 3.86432845],
       [ 0.25877718]])
 
 Notice that we only got 'U' back -- that's because python hasn't got something
-like matlab's multiple value return. Since matlab functions can have
+like Matlab's multiple value return. Since Matlab functions can have
 completely different behavior depending on how many output parameters are
 requested, you have to specify explicitly if you want more than 1. So to get
 'U' and also 'S' and 'V' you'd do:
 
 >>> U, S, V = mlab.svd([[1,2],[1,3]], nout=3)
 
-The only other possible catch is that matlab (to a good approximation)
+The only other possible catch is that Matlab (to a good approximation)
 basically represents everything as a double matrix. So there are no
 scalars, or 'flat' vectors. They correspond to 1x1 and 1xN matrices
 respectively. So, when you pass a flat vector or a scalar to a
@@ -145,7 +167,7 @@ Strings also work as expected:
 'ABCDE'
 
 However, although matrices and strings should cover most needs and can be
-directly converted, matlab functions can also return structs or indeed
+directly converted, Matlab functions can also return structs or indeed
 classes and other types that cannot be converted into python
 equivalents. However, rather than just giving up, mlabwrap just hides
 this fact from the user by using proxies:
@@ -170,7 +192,7 @@ has parent: no>
       b2: [-0.6681 0.3572 0.8118]
 
 When `net` or other proxy objects a passed to mlab functions, they are
-automatically converted into the corresponding matlab-objects. So to obtain
+automatically converted into the corresponding Matlab-objects. So to obtain
 a trained network on the 'xor'-problem, one can simply do:
 
 >>> net = mlab.mlptrain(net, [[1,1], [0,0], [1,0], [0,1]], [0,0,1,1], 1000)
@@ -209,7 +231,7 @@ Comparison to other existing modules
 
 To get a vague impression just *how* high-level all this, consider attempting to
 do something similar to the first example with pymat (upon which the
-underlying mlabraw interface to matlab is based).
+underlying mlabraw interface to Matlab(TM) is based).
 
 this:
 
@@ -218,8 +240,8 @@ this:
 becomes this:
 
 >>> session = pymat.open()
->>> pymat.put(session, [[1,2], [1,3]], "X")
->>> pymat.put(session, 0, "cheap")
+>>> pymat.put(session, "X", [[1,2], [1,3]])
+>>> pymat.put(session, "cheap", 0)
 >>> pymat.eval(session, '[A, B, C] = svd(X, cheap)')
 >>> A = pymat.get(session, 'A')
 >>> B = pymat.get(session, 'B')
@@ -227,25 +249,33 @@ becomes this:
 
 Plus, there is virtually no error-reporting at all, if something goes wrong in
 the `eval` step, you'll only notice because the subsequent `get` mysteriously
-fails.
+fails. And of course something more fancy like the netlab example above (which
+uses proxies to represent matlab class instances in python) would be
+impossible to accomplish in pymat in a similar manner.
 
-However *should* you need fast (i.e. C calls only) low-level access, then that
-is equally available (and *with* error reporting); basically just replace
-``pymat`` with ``mlabraw`` above and use ``mlab._session`` as session), i.e
+However *should* you need low-level access, then that is equally available
+(and *with* error reporting); basically just replace ``pymat`` with
+``mlabraw`` above and use ``mlab._session`` as session), i.e
 
 >>> from mlabwrap import mlab
 >>> import mlabraw
->>> pymat.put(mlab._session, [[1,2], [1,3]], "X")
+>>> pymat.put(mlab._session, "X", [[1,2], [1,3]])
 [...]
 
+Before you resort to this you should ask yourself if it's really a good idea;
+the inherent overhead associated with Matlab's C interface appears to be quite
+high, so the additional python overhead shouldn't normally matter much -- if
+efficiency becomes an issue it's probably better to try to chunk together
+several matlab commands in an ``.m``-file in order to reduce the number of
+matlab calls.
 
 What's Missing?
 ---------------
 
 - Handling of as arrays of (array) rank 3 or more as well as
   non-double/complex arrays (currently everything is converted to
-  double/complex for passing to matlab and passing non-double/complex from
-  matlab is not not supported). Both should be reasonably easy to implement,
+  double/complex for passing to Matlab and passing non-double/complex from
+  Matlab is not not supported). Both should be reasonably easy to implement,
   but I currently don't need them.
 - Better support for cells.
 
@@ -257,23 +287,23 @@ So how does it all work?
 
 I've got a C extension module (a heavily bug-fixed and somewhat modified
 version of pymat, an open-source, low-level python-matlab interface) to take
-care of opening matlab sessions, sending matlab commands as strings to a
-running matlab session and and converting Numeric arrays (and sequences and
-strings...) to matlab matrices and vice versa. On top of this I then built a
+care of opening Matlab sessions, sending Matlab commands as strings to a
+running Matlab session and and converting Numeric arrays (and sequences and
+strings...) to Matlab matrices and vice versa. On top of this I then built a
 pure python module that with various bells and whistles gives the impression
-of providing a matlab "module".
+of providing a Matlab "module".
 
-This is done by a class that manages a single matlab session (of which
+This is done by a class that manages a single Matlab session (of which
 `mlab` is an instance) and creates methods with docstrings
 on-the-fly. Thus, on the first call of ``mlab.abs(1)``, the wrapper looks
 whether there already is a matching function in the cache. If not, the
-docstring for ``abs`` is looked up in matlab and matlab's flimsy
+docstring for ``abs`` is looked up in Matlab and Matlab's flimsy
 introspection abilities are used to determine the number of output
 arguments (0 or more), then a function with the right docstring is
 dynamically created and assigned to ``mlab.abs``. This function takes care
 of the conversion of all input parameters and the return values, using
 proxies where necessary. Proxy are a bit more involved and the proxy
-pickling scheme uses matlab's `save` command to create a binary version of
+pickling scheme uses Matlab's `save` command to create a binary version of
 the proxy's contents which is then pickled, together with the proxy object
 by python itself. Hope that gives a vague idea, for more info study the
 source.
@@ -298,7 +328,7 @@ If on importing mlabwrap you get somthing like this::
 
  ImportError: libeng.so: cannot open shared object file: No such file or directory
 
-then chances are that the relevant matlab libraries are not in you library
+then chances are that the relevant Matlab libraries are not in you library
 path. You can rectify this situation in a number of ways; let's assume your
 running linux and that the libraries are in ``/opt/matlab/bin/glnx86/``
 (**NOTE**: *this used to be ``/opt/matlab/extern/lib/glnx86/`` in versions
@@ -309,7 +339,7 @@ libraries no longer reside there!*)
 
     export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/matlab/bin/glnx86/
 
-2. As root, you can either add the matlab library path to ``/etc/ld.so.conf``
+2. As root, you can either add the Matlab library path to ``/etc/ld.so.conf``
    and run ``ldconfig``
 
 3. Or, ugly but also works: just copy or symlink all the libraries to
@@ -320,9 +350,9 @@ Can't open engine
 '''''''''''''''''
 If you see something like ``mlabraw.error: Unable to start MATLAB(TM) engine``
 then you may be using an incompatible C++ compiler (or version). Try if you
-can get the ``engdemo.c`` file to work that comes with your matlab
+can get the ``engdemo.c`` file to work that comes with your Matlab
 installation -- copy it to a directory where you have write access and do
-(assuming matlab is installed in /opt/MatlabR14 and you're running unix,
+(assuming Matlab is installed in /opt/MatlabR14 and you're running unix,
 otherwise modify as requird)::
 
   mex -f /opt/MatlabR14/bin/engopts.sh engdemo.c
@@ -351,7 +381,7 @@ If you get something like this on ``python setup.py install``::
 
  mlabraw.cpp:634: `engGetVariable' undeclared (first use this function)
 
-Then you're presumably using an old version of matlab (i.e. < 6.5);
+Then you're presumably using an old version of Matlab (i.e. < 6.5);
 ``setup.py`` ought to have detected this though (try adjusting
 ``MATLAB_VERSION`` by hand a write me a bug report).
 
@@ -387,12 +417,11 @@ Windows
 I'm thankfully not using windows myself, but I try to keep mlabwrap working
 under windows, for which I depend on the feedback from windows users. 
 
-Most recently, just when I was worried by reports that 0.9 versions no longer
-built succesfully under windows Joris van Zwieten sent me a patch to setup.py
-(thanks!); which I've tweaked it a little bit. I've had confirmation from
-another user that it worked for him out-of-the box, but please have a look at
-setup.py you might need to adjust some parameters depending on your
-configuration.
+Since there are several popular C++ compilers under windows, you might have to
+tell setup.py which one you'd like to use (unless it's VC 7).
+
+George A. Blaha sent me a patch for Borland C++ support; search for "Borland
+C++" in setup.py and follow the instructions.
 
 Dylan T Walker writes mingw32 will also work fine, but for some reason
 (distuils glitch?) the following invocation is required::
@@ -401,11 +430,11 @@ Dylan T Walker writes mingw32 will also work fine, but for some reason
     > setup.py install --skip-build
 
 
+
 Support and Feedback
 --------------------
 
-Private email is OK, but the preferred way is via the recently established
-`project mailing list`_
+Private email is OK, but the preferred way is via the `project mailing list`_
 
 .. _project mailing list:
    http://lists.sourceforge.net/lists/listinfo/mlabwrap-user
@@ -426,10 +455,12 @@ existed.
 
 Matthew Brett contributed numpy compatibility and nice setup.py improvements
 (which I adapted a bit) to further reduce the need for manual user
-intervention for installation.
+intervention for installation. 
 
 I'm only using linux myself -- so I gratefully acknowledge the help of Windows
-and OS X users to get things running smoothly under these OSes as well.
+and OS X users to get things running smoothly under these OSes as well;
+particularly those who provided patches to setup.py or mlabraw.cpp (Joris van
+Zwieten, George A. Blaha and others).
 
 Matlab is a registered trademark of `The Mathworks`_.
 

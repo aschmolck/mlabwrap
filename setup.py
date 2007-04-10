@@ -76,16 +76,26 @@ def matlab_params(matlab_command_str):
     startup = "fid = fopen('%s', 'wt');" % param_fname + \
               r"fprintf(fid, '%s\n%s\n%s\n', version, matlabroot, computer);" + \
               "fclose(fid); quit"
+    fh = None
     try:
-        os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup)) #HACK
-        fh = None; fh = open(param_fname)
-        ver, pth, platform = fh
+        error = os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup)) #HACK
+        if error:
+            sys.exit('''INSTALL ABORT: %r RETURNED ERROR CODE %d
+PLEASE MAKE SURE matlab IS IN YOUR PATH!
+''' % (matlab_command_str, error))
+        fh = open(param_fname)
+        ver, pth, platform = iter(fh)
         return (float(re.match(r'\d+.\d+',ver).group()),
                 pth.rstrip(), platform.rstrip().lower())
     finally:
         if fh: fh.close()
-        os.remove(param_fname)
-
+        try:
+            os.remove(param_fname)
+        except OSError, msg: # FIXME
+            print >> sys.stderr, """
+WINDOWS SPECIFIC ISSUE? Unable to remove %s; please delete it manually
+%s
+""" % (param_fname, msg)
 
 # windows
 WINDOWS=sys.platform.startswith('win')
@@ -93,7 +103,15 @@ if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
     cmd = os.getenv('MLABRAW_CMD_STR', 'matlab') + ' -nodesktop -nosplash -r "%s"'
     if not WINDOWS:
         cmd+=' >/dev/null'
-    if len(sys.argv) > 1 and re.search("build|install|bdist", sys.argv[1]):
+    # FIXME: it is necessary to call matlab to figure out unspecified install
+    # parameters but only if the user actually intends to build something
+    # (e.g. not for making a sdist or running a clean or --author-email etc.).
+    # Unfortunately I can't see a clean way to do that, so this nasty kludge
+    # attempts to avoid calling matlab unless required.
+    if len(sys.argv) > 1 and not (
+        re.search("sdist|clean", sys.argv[1]) or
+        len(sys.argv) == 2 and sys.argv[1].startswith('--') or
+        sys.argv[-1].startswith('--help')):
         queried_version, queried_dir, queried_platform_dir = matlab_params(cmd)
     else:
         queried_version, queried_dir, queried_platform_dir = ["WHATEVER"]*3
