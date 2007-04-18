@@ -30,6 +30,9 @@ python library.
 News
 ----
 
+**2007-04-16** Added some more info for users experiencing problems with the
+matlab engine in `Troubleshooting`_.
+
 **2007-04-10** 1.0final is out! Compared to the last beta, setup.py should now
 work better under windows (Borland C++ support, inter alia). Also included is
 a work-around for an ipython bug that causes spurious error message when using
@@ -46,7 +49,8 @@ for users who seek support or want to provide feedback.
 
 **Compatibility Note:** Since matlab is becoming increasingly less
 ``double``-centric, the default conversion rules might change in post 1.0
-mlabwrap; so whilst using ``mlab.plot([1,2,3])`` rather than
+mlabwrap (even if such changes are introduced the old behavior will be
+optionally available); so whilst using ``mlab.plot([1,2,3])`` rather than
 ``mlab.plot(array([1.,2.,3.]))`` is fine for interactive use as in the
 tutorial below, the latter is recommended for production code.
 
@@ -77,6 +81,10 @@ Although I myself use only linux, mlabwrap should work with python>=2.3 (even
 python 2.2, with minor coaxing) and either numpy_ (recommended) or Numeric
 (obsolete) installed and Matlab 6, 6.5 or 7 under unix(tm), OS X (tm) and
 windows (see `OS X`) on 32- or 64-bit machines.
+
+The windows install will for some reason complain that it can't delete a
+tempory file, but this message is harmless (just delete the file by hand, if
+necessary).
 
 Documentation
 -------------
@@ -348,9 +356,11 @@ libraries no longer reside there!*)
 
 Can't open engine
 '''''''''''''''''
+
 If you see something like ``mlabraw.error: Unable to start MATLAB(TM) engine``
-then you may be using an incompatible C++ compiler (or version). Try if you
-can get the ``engdemo.c`` file to work that comes with your Matlab
+then you may be using an incompatible C++ compiler (or version), or if you're
+using unix you might not have ``csh`` installed under ``/bin/csh``, see below.
+Try if you can get the ``engdemo.c`` file to work that comes with your Matlab
 installation -- copy it to a directory where you have write access and do
 (assuming Matlab is installed in /opt/MatlabR14 and you're running unix,
 otherwise modify as requird)::
@@ -373,6 +383,14 @@ the following::
   > optsfile = [matlabroot '/bin/engopts.sh'];
   > mex -v -f optsfile 'engdemo.c';
   > !./engdemo;
+
+**Update** John Bender reports that under unix csh needs to be installed in
+``/bin/csh`` for the matlab external engine to work -- since many linux
+distros don't install csh by default, you might have to do something like
+``sudo apt-get install csh`` (e.g. under ubuntu or other debian-based
+systems). He also pointed out this helpful `engdemo troubleshooting`_ page at
+the Mathworks(tm) site.
+
 
 
 Old Matlab version
@@ -466,6 +484,9 @@ Matlab is a registered trademark of `The Mathworks`_.
 
 .. _The Mathworks: 
    http://www.mathworks.com
+
+.. _engdemo troubleshooting:
+   http://www.mathworks.com/access/helpdesk/help/techdoc/index.html?/access/helpdesk/help/techdoc/matlab_external/f39903.html
 
 .. _numpy:
    http://numpy.scipy.org
