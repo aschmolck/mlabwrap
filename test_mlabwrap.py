@@ -5,9 +5,9 @@
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
 ## o created: 2003-07-00 00:00:00+00:00
 ## o last modified: $Date$
-## o Note: Some optional but useful tests require
-##   <http://mexcdf.sourceforge.net/>!
+
 import sys, os, re
+from pdb import pm # for debugging test failures
 try:
     import numpy
     from numpy.random import rand, randn
@@ -27,7 +27,7 @@ degensym_proxy = lambda s, rex=re.compile(r'(PROXY_VAL)\d+'): rex.sub(r'\1',s)
 import unittest
 TestCase = unittest.TestCase
 TestSuite = unittest.TestSuite
-try: 
+try:
     import awmstest
     TestCase = awmstest.PermeableTestCase2
     TestSuite = awmstest.RotatingTestSuite
@@ -35,6 +35,7 @@ except ImportError: pass
 
 from awmstools import indexme, without
 from mlabwrap import *
+BUFSIZE=4096 # must be the same as in mlabraw.cpp
 
 #XXX for testing in running session with existing mlab
 ## mlab
@@ -76,7 +77,7 @@ class NumericTestCase(TestCase):
             # HACK
             if len(first) == len(second) == 0:
                 return `first` == `second` # deal with empty arrays
-            res = ((not testShape or numpy.shape(first) == numpy.shape(second)) and 
+            res = ((not testShape or numpy.shape(first) == numpy.shape(second)) and
                    # it is necessary to exclude 0 element arrays, because
 
                    # identical zero-element arrays don't compare true (``and True`` normalizes)
@@ -110,8 +111,8 @@ class NumericTestCase(TestCase):
             raise self.failureException, \
                   (msg or '%s == %s within %s places' % self._smallRepr(first,second,places))
     failIfAlmostEqual =  assertNotAlmostEquals = assertNotAlmostEqual
-    
-    
+
+
 class mlabwrapTC(NumericTestCase):
 ##     def assertEqual(self, first, second):
 ##         res = first == second
@@ -119,7 +120,7 @@ class mlabwrapTC(NumericTestCase):
 ##             res = numpy.shape(first) == numpy.shape(second) and \
 ##                   bool(numpy.alltrue((numpy.ravel(a1 == a2))))
 ##         super(TestCase, self).assertEquals(res, True)
-        
+
     def testBasic(self):
         """Test basic behavior."""
         array = numpy.array
@@ -146,7 +147,7 @@ class mlabwrapTC(NumericTestCase):
                 self.assertEqual(a[::-2], mlab._get('a'))
             else:
                 self.assertEqual(a[::-2], numpy.ravel(mlab._get('a')))
-            self.assertEqual(a, a1)                
+            self.assertEqual(a, a1)
             if numpy.rank(a) == 2:
                 mlab._set('a', a[0:-3:3,::-1])
                 self.assertEqual(a[0:-3:3,::-1], mlab._get('a'))
@@ -156,7 +157,7 @@ class mlabwrapTC(NumericTestCase):
                 self.assertEqual(a,a1)
                 if len(newA):
                     self.assertNotEqual(newA, mlab._get('a'))
-            self.assertEqual(a, a1)                
+            self.assertEqual(a, a1)
             mlab.clear('a')
         # Complex
         for i in range(30):
@@ -181,7 +182,7 @@ class mlabwrapTC(NumericTestCase):
                 self.assertEqual(a[::-2], mlab._get('a'))
             else:
                 self.assertEqual(a[::-2], numpy.ravel(mlab._get('a')))
-            self.assertEqual(a, a1)                
+            self.assertEqual(a, a1)
             if numpy.rank(a) == 2:
                 mlab._set('a', a[0:-3:3,::-1])
                 self.assertEqual(a[0:-3:3,::-1], mlab._get('a').astype('D')) # XXX
@@ -191,10 +192,10 @@ class mlabwrapTC(NumericTestCase):
                 self.assertEqual(a,a1)
                 if len(newA):
                     self.assertNotEqual(newA, mlab._get('a'))
-            self.assertEqual(a, a1)                
+            self.assertEqual(a, a1)
             mlab.clear('a')
 
-            
+
         # the tricky diversity of empty arrays
         mlab._set('a', [[]])
         self.assertEqual(mlab._get('a'), numpy.zeros((1, 0), 'd'))
@@ -238,17 +239,19 @@ class mlabwrapTC(NumericTestCase):
         """Back up options."""
         self.backup = {}
         for opt in """\
-        _array_cast  
+        _array_cast
         _autosync_dirs
-        _flatten_row_vecs 
-        _flatten_col_vecs 
-        _clear_call_args 
-        _session 
-        _proxies 
-        _proxy_count 
-        _mlabraw_can_convert 
+        _flatten_row_vecs
+        _flatten_col_vecs
+        _clear_call_args
+        _session
+        _proxies
+        _proxy_count
+        _mlabraw_can_convert
         _dont_proxy""".split():
            self.backup[opt] = mlab.__dict__[opt]
+        mlab.addpath(os.path.dirname(__file__)) # XXX
+        print "ADDPATHed", os.path.dirname(__file__)
     def tearDown(self):
         """Reset options."""
         mlab.__dict__.update(self.backup)
@@ -262,7 +265,7 @@ class mlabwrapTC(NumericTestCase):
             mlab.sin(1.23)
             assert not 'arg0__' in mlab.who()
         finally:
-            mlab._clear_call_args = True            
+            mlab._clear_call_args = True
             mlab._dont_proxy['cell'] = False
     def testXXXSubtler(self):
         """test more subtle stuff. This must come last, hence the XXX"""
@@ -317,7 +320,8 @@ class mlabwrapTC(NumericTestCase):
             f.close()
         finally:
             os.remove(pickleFilename)
-        assert len(mlab._proxies) == 4
+        gc.collect()
+        assert len(mlab._proxies) == 4, "%d proxies!" % len(mlab._proxies)
         assert namespace['sct'][1].x == 'New Value'
         namespace['sct'][1].x = 'Even Newer Value'
         assert namespace['sct'][1].x ==  'Even Newer Value'
@@ -332,67 +336,99 @@ class mlabwrapTC(NumericTestCase):
         assert x[0] == 'hallo\n'
         mlab._dont_proxy['cell'] = False
         self.assertRaises(ValueError, getattr, mlab, "buggy('ipython lookup')")
-    def testAnEvenSubtlerProxyStuff(self):
-        "time for some advanced proxied __getitem__ and __setitem___."
-        if not mlab.exist('netcdf'):
-            print >>sys.stderr, "Couldn't test subtle proxy stuff"
-            return
-        tmp_filename = mktemp(".nc")
-        try:
-            # This example may look a bit uhm, confusing, because the netcdf
-            # class overloads matlab's already bizzarre syntax in dubious
-            # ways.
-            
-            # create a new netcdf file
-            ncf = mlab.netcdf(tmp_filename, 'clobber')
-            ncf['dimension1'] = 10
-            ncf['dimension2'] = 20
-            #ncf['dimensionToDelete'] = 666
-            ncf.someGlobalAttributeStr = "A random comment"
-            ncf.someGlobalAttributeDouble = 2.0
-            # use foo._[bar] for matlab's ``foo{'bar'}`` (instead of default
-            # indexing foo[bar], which corresponds to ``foo('bar')``;
-            # classes can support both styles of indexing, and indeed this one
-            # does -- blech)
-            ncf._['someVariable'] = 'dimension1'
-            ncf._['someOtherVariable'] = 'dimension2'
-            ncf._['someVariable'].someUnit = 'pixel'
-            ncf._['someVariable'][:] = range(10)
-            assert list(numpy.ravel(ncf._['someVariable'][:])) == range(10)
-            ncf._['someVariable'][2:5] = [22,33,44]
-            assert list(numpy.ravel(ncf._['someVariable'][:])) == [0,1,22,33,44,5,6,7,8,9]
-            ncf._['someOtherVariable'][0:20] = range(20)
-            mlab.close(ncf)
+    def testSparseArrays(self):
+        """Make sure sparse arrays work."""
+        s = mlab.sparse(numpy.zeros([100,100]))
+        self.assertEqual(mlab.full(s), numpy.zeros([100,100]))
+        # FIXME: add these once we have multi-dimensional proxying
+##         s = mlab.sparse(numpy.zeros([100,100]))
+##         self.assertEqual(s[0,0], 0.0)
+##         self.assertEqual(s[99,99], 0.0)
+##         t = mlab.sparse(numpy.array([[1.,2,3],[0,0,0],[4,5,6]]))
+##         self.assertEqual(t[0,0], 1.0)
+##         self.assertEqual(t[1,1], 0)
+##         self.assertEqual(t[2,2], 6)
 
-            # open netcdf file for reading and check everything's OK
-            ncf = mlab.netcdf(tmp_filename, 'read')
-            assert list(numpy.ravel(ncf._['someOtherVariable'][:])) == range(20)
-            assert list(numpy.ravel(ncf._['someVariable'][:])) == [0,1,22,33,44,5,6,7,8,9]
-            self.assertRaises(ValueError, ncf._['someVariable'].__getitem__,slice(2, None, None))
-            self.assertRaises(ValueError, ncf._['someVariable'].__getitem__,slice(2, 4, -1))
-            assert toscalar(ncf.someGlobalAttributeDouble[:]) == 2.0
-            assert ncf.someGlobalAttributeStr[:] == "A random comment"
-            assert ncf._['someVariable'].someUnit[:] == 'pixel'
-            assert ncf.someGlobalAttributeStr[:] == "A random comment"
-            mlab.close(ncf)
-##             mlab._set('d1', ncf['dimension1'])
-##             mlab._set('d2', ncf['dimension2'])
-        finally:
-            if os.path.exists(tmp_filename): os.remove(tmp_filename)
-    def testMlabraw(self):
+    def testProxyIndexing(self):
+        "indexing and co: time for some advanced proxied __getitem__ and __setitem__ etc.."
+        p=mlab.proxyTest(mlab.struct('a', 1, 'b', '2'))
+        p.c = [[4,5]]
+        assert p.a == 1.0
+        assert p.b == '2'
+        assert list(p.c.flat) == [4,5]
+        # test all combinations of 1D indexing
+        sv = mlab.proxyTest(range(4))
+        assert sv[0] == 0
+        sv[0] = -33
+        assert sv[0] == -33
+        # test curly indexing; the proxyTest class in matlab arbitrarily uses
+        # string conversion on ``{}`` indexing to have something to distinguish
+        # it from "normal" ``()`` indexing
+        sv._[0] = '0'
+        assert sv._[0] == '0' == str(int(toscalar(sv[0])))
+        assert sv["some'string\nwith\\funny\tstuff"] == (
+            "you ()-indexed with the string <<some'string\nwith\\funny\tstuff>>")
+
+        # FIXME this is something to potentially add, but that also raises issues
+##         assert numpy.ndim(sv) == 2 # FIXME change that to 1?
+##         assert numpy.shape(sv[:]) == (4,1)  # FIXME change that to 1?
+        assert list(sv[:].flat) == range(4)
+        # more complicated "open-ended" slices aren't supported (yet)
+        self.assertEqual(sv[0:], sv[:])
+        self.assertEqual(sv[:-1], sv[0:-1])
+        self.assertEqual(sv[0:-1:1], sv[:-1])
+        self.assertEqual(sv[-4:], sv[:])
+        self.assertEqual(sv[-4:-3], sv[0:1])
+        for b in [None] + range(-4,4):
+            for e in  [None] + range(-4,4):
+                for s in [None,1]:
+                    assert list(sv[b:e:s].flat) == range(4)[b:e:s], (
+                        "sv[b:e:s]: %s (b,e,s): %s" % (sv[b:e:s], (b,e,s)))
+
+
+        sv[:-1] = -numpy.arange(3)
+        assert list(sv[:].flat) ==  [-x for x in range(3)] + [3]
+        sv[:] = numpy.arange(4)
+        assert list(sv[:].flat) == range(4)
+        sv[-2:] = numpy.arange(2)+10
+        assert list(sv[:].flat) == [0,1,10,11]
+
+        # FIXME math ops aren't yet implemented
+        # sv *= 10
+        # sv[1:3] *= 10 # FIXME
+        # sv + 3
+
+        # FIXME multi-D stuff isn't either
+##         sm = mlab.proxyTest(arange(6).reshape(3,2))
+##         assert sm.ndim == 2
+##         assert sm.shape == (3,2)
+##         assert len(sm) == 3
+##         assert len(sm).T
+
+##         p.sv = sv
+##         assert p.sv is sv
+##         assert p.sv[:]
+
+
+    def testRawMlabraw(self):
         """A few explicit tests for mlabraw"""
         import mlabraw
         #print "test mlabraw"
         self.assertRaises(TypeError, mlabraw.put, 33, 'a',1)
         self.assertRaises(TypeError, mlabraw.get, object(), 'a')
         self.assertRaises(TypeError, mlabraw.eval, object(), '1')
+
+        mlabraw.eval(mlab._session, '1'*(BUFSIZE-1))
+        assert numpy.inf == mlabraw.get(mlab._session, 'ans');
+        # test for buffer overflow detection
+        self.assertRaises(RuntimeError, mlabraw.eval,mlab._session, '1'*BUFSIZE)
         self.assertEqual(mlabraw.eval(mlab._session, r"fprintf('1\n')"),'1\n')
         try:
             self.assertEqual(mlabraw.eval(mlab._session, r"1"),'')
         finally:
             mlabraw.eval(mlab._session,'clear ans')
         #print "tested mlabraw"
-    
+
     def testOrder(self):
         """Testing order flags cause no problems"""
         try: import numpy
