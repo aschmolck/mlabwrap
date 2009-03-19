@@ -10,7 +10,9 @@
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
 ####################################################################
+MATLAB_COMMAND = 'matlab'   # specify a full path if not in PATH
 MATLAB_VERSION = None       # e.g: 6 (one of (6, 6.5, 7, 7.3))
+                            #      7.3 includes later versions as well
 MATLAB_DIR= None            # e.g: '/usr/local/matlab'; 'c:/matlab6'
 PLATFORM_DIR=None           # e.g: 'glnx86'; r'win32/microsoft/msvc60'
 EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
@@ -20,18 +22,15 @@ MATLAB_LIBRARIES=None       # e.g: ['eng', 'mx', 'mat', 'mi', 'ut']
 USE_NUMERIC=None            # use obsolete Numeric instead of numpy?
 PYTHON_INCLUDE_DIR=None     # where to find numpy/*.h or Numeric/*.h
 
-SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already 
+SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already
                                            # installed
-# DON'T FORGET TO DO SOMETHING LIKE:
-#   export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/MATLAB_DIR/extern/lib/glnx86/
-
 ########################### WINDOWS ONLY ###########################
 #  Option 1: Visual Studio
 #  -----------------------
 #  only needed for Windows Visual Studio (tm) build
 #  (adjust if necessary if you use a different version/path of VC)
 VC_DIR='C:/Program Files/Microsoft Visual Studio .NET 2003/vc7'
-# NOTE: You'll also need to adjust PLATFORM_DIR accordingly 
+# NOTE: You'll also need to adjust PLATFORM_DIR accordingly
 #
 #  Option 2: Borland C++
 #  ---------------------
@@ -41,23 +40,31 @@ VC_DIR='C:/Program Files/Microsoft Visual Studio .NET 2003/vc7'
 #VC_DIR=None
 #PLATFORM_DIR="win32/borland/bc54"
 
-
 ####################################################################
 ### NO MODIFICATIONS SHOULD BE NECESSARY BEYOND THIS POINT       ###
 ####################################################################
 # *******************************************************************
+
 from distutils.core import setup, Extension
 import os, os.path, glob
 import sys
 import re
 from tempfile import mktemp
+if sys.version_info < (2,2):
+    print >> sys.stderr, "You need at least python 2.2"
+    sys.exit(1)
 try: # python >= 2.3 has better mktemp
     from tempfile import mkstemp as _mkstemp
     mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
 except ImportError: pass
-if sys.version_info < (2,2):
-    print >> sys.stderr, "You need at least python 2.2"
-    sys.exit(1)
+try: # subprocess is available from python >= 2.4
+    from subprocess import call
+except ImportError:
+    def call(cmd, stdout=None):
+        # ignore stdout redirection
+        # could also escape via ``re.sub(r'[\"$*()?!{}[]]', r'\\\1', cmd[0])``
+        return os.spawnvp(os.P_WAIT, cmd[0], cmd)
+
 
 if PYTHON_INCLUDE_DIR is None and not USE_NUMERIC:
     try:
@@ -71,18 +78,21 @@ if PYTHON_INCLUDE_DIR is None and not USE_NUMERIC:
         except ImportError:
             print >> sys.stderr, "CANNOT FIND EITHER NUMPY *OR* NUMERIC"
 
-def matlab_params(matlab_command_str):
+def matlab_params(cmd, extra_args):
     param_fname = mktemp()
-    startup = "fid = fopen('%s', 'wt');" % param_fname + \
-              r"fprintf(fid, '%s\n%s\n%s\n', version, matlabroot, computer);" + \
-              "fclose(fid); quit"
+    # XXX I have no idea why '\n' instead of the ``%c...,10`` hack fails - bug
+    # in matlab's cmdline parsing? (``call`` doesn't do shell mangling, so that's not it...)
+    code = ("fid = fopen('%s', 'wt');" % param_fname +
+            r"fprintf(fid, '%s%c%s%c%s%c', version, 10, matlabroot, 10, computer, 10);" +
+            "fclose(fid); quit")
+    cmd += ['-r', code]
     fh = None
     try:
-        error = os.system(matlab_command_str % re.sub(r'\"$!', r'\\\1',startup)) #HACK
+        error = call(cmd, **extra_args)
         if error:
             sys.exit('''INSTALL ABORT: %r RETURNED ERROR CODE %d
 PLEASE MAKE SURE matlab IS IN YOUR PATH!
-''' % (matlab_command_str, error))
+''' % (" ".join(cmd), error))
         fh = open(param_fname)
         ver, pth, platform = iter(fh)
         return (float(re.match(r'\d+.\d+',ver).group()),
@@ -100,9 +110,11 @@ WINDOWS SPECIFIC ISSUE? Unable to remove %s; please delete it manually
 # windows
 WINDOWS=sys.platform.startswith('win')
 if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
-    cmd = os.getenv('MLABRAW_CMD_STR', 'matlab') + ' -nodesktop -nosplash -r "%s"'
+    cmd = [MATLAB_COMMAND, "-nodesktop",  "-nosplash"]
     if not WINDOWS:
-        cmd+=' >/dev/null'
+        extra_args = dict(stdout=open('/dev/null', 'wb'))
+    else:
+        extra_args = {}
     # FIXME: it is necessary to call matlab to figure out unspecified install
     # parameters but only if the user actually intends to build something
     # (e.g. not for making a sdist or running a clean or --author-email etc.).
@@ -112,7 +124,7 @@ if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
         re.search("sdist|clean", sys.argv[1]) or
         len(sys.argv) == 2 and sys.argv[1].startswith('--') or
         sys.argv[-1].startswith('--help')):
-        queried_version, queried_dir, queried_platform_dir = matlab_params(cmd)
+        queried_version, queried_dir, queried_platform_dir = matlab_params(cmd, extra_args)
     else:
         queried_version, queried_dir, queried_platform_dir = ["WHATEVER"]*3
     MATLAB_VERSION = MATLAB_VERSION or queried_version
@@ -134,8 +146,8 @@ else:
     CPP_LIBRARIES = ['stdc++'] #XXX strangely  only needed on some linuxes
     if sys.platform.startswith('sunos'):
         EXTRA_COMPILE_ARGS = EXTRA_COMPILE_ARGS or ['-G']
-        
-        
+
+
 
 if MATLAB_VERSION >= 7 and not WINDOWS:
     MATLAB_LIBRARY_DIRS = [MATLAB_DIR + "/bin/" + PLATFORM_DIR]
@@ -149,12 +161,7 @@ if WINDOWS:
     else:
         print "Not using Visual C++; fiddling paths for Borland C++ compatibility"
         MATLAB_LIBRARY_DIRS = [mld.replace('/','\\') for mld in  MATLAB_LIBRARY_DIRS]
-elif [mld for mld in MATLAB_LIBRARY_DIRS if os.getenv('LD_LIBRARY_PATH',"").find(mld) == -1]:
-    print >> sys.stderr, """
-    DON'T FORGET TO DO SOMETHING LIKE:
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:%s
-    """ % (":".join(MATLAB_LIBRARY_DIRS))
-DEFINE_MACROS=[]    
+DEFINE_MACROS=[]
 if MATLAB_VERSION >= 6.5:
     DEFINE_MACROS.append(('_V6_5_OR_LATER',1))
 if MATLAB_VERSION >= 7.3:
@@ -163,7 +170,7 @@ if USE_NUMERIC:
     DEFINE_MACROS.append(('MLABRAW_USE_NUMERIC', 1))
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "1.0",
+       version = "1.0.1",
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",
@@ -171,11 +178,12 @@ setup (# Distribution meta-data
        url='http://mlabwrap.sourceforge.net',
        ext_modules = [
           Extension(EXTENSION_NAME, ['mlabraw.cpp'],
-              define_macros=DEFINE_MACROS,
-              library_dirs=MATLAB_LIBRARY_DIRS ,
-              libraries=MATLAB_LIBRARIES + CPP_LIBRARIES,
-                     include_dirs=MATLAB_INCLUDE_DIRS + (PYTHON_INCLUDE_DIR and [PYTHON_INCLUDE_DIR] or []),
-                     extra_compile_args=EXTRA_COMPILE_ARGS,
-                     ),
-           ]
-       )
+                    define_macros=DEFINE_MACROS,
+                    library_dirs=MATLAB_LIBRARY_DIRS ,
+                    runtime_library_dirs=MATLAB_LIBRARY_DIRS,
+                    libraries=MATLAB_LIBRARIES + CPP_LIBRARIES,
+                    include_dirs=MATLAB_INCLUDE_DIRS + (PYTHON_INCLUDE_DIR and [PYTHON_INCLUDE_DIR] or []),
+                    extra_compile_args=EXTRA_COMPILE_ARGS,
+                    ),
+        ]
+    )
