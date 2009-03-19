@@ -1,56 +1,73 @@
-==============
-mlabwrap v1.0
-==============
+.. -*- mode: rst; coding: utf-8; -*-
 
-:copyright: 2003-2007 Alexander Schmolck
-:date: 2007-04-10
+===============
+mlabwrap v1.0.1
+===============
 
-..
+:copyright: 2003-2009 Alexander Schmolck
+:date: 2009-03-19
 
 
-.. contents:: 
+.. contents::
 
 Description
 -----------
-A high-level python to `Matlab(tm)`_ bridge. Let's Matlab look like a normal
+A high-level python to `Matlab®`_ bridge. Let's Matlab look like a normal
 python library.
 
     Thanks for your terrific work on this very-useful Python tool!
 
-    -- George A. Blaha, Senior Systems Engineer, 
+    -- George A. Blaha, Senior Systems Engineer,
        Raytheon Integrated Defense Systems
 
 
 
-.. _Matlab(tm): 
+.. _Matlab®:
    http://www.mathworks.com
-
 
 
 News
 ----
 
-**2007-04-16** Added some more info for users experiencing problems with the
-matlab engine in `Troubleshooting`_.
+
+**2009-03-20** 1.0.1 is finally out. This is a minor release that fixes some
+annoying but mostly minor bugs in mlabwrap (it also slightly improves the
+indexing support for proxy-objects, but the exact semantics are still subject
+to change.)
+
+- installation is now easier, in particularly ``LD_LIBRARY_PATH`` no longer
+  needs to be set and some quoting issues with the matlab call during
+  installation have been addressed.
+
+- sparse Matlab® matrices are now handled correctly
+  (``mlab.sparse([0,0,0,0])`` will now return a proxy for a sparse double
+  matrix, rather than incorrectly treat at as plain double array and return
+  junk or crash).
+
+- replaced the (optional) use of the outdated netcdf package for the
+  unit-tests with homegrown matlab helper class.
+
+- several bugs squashed (length of mlabraw.eval'ed strings is checked, better
+  error-messages etc.) and some small documentation improvements.
+
 
 **2007-04-10** 1.0final is out! Compared to the last beta, setup.py should now
 work better under windows (Borland C++ support, inter alia). Also included is
 a work-around for an ipython bug that causes spurious error message when using
-mlabwrap with some versions of ipython. 
+mlabwrap with some versions of ipython.
 
 This is the last version with optional Numeric support. Future versions of
 mlabwrap will be hosted as a scikits project on scipy (see
 <http://www.scipy.org/MlabWrap>), require numpy and adopt the scipy package
 structure (i.e. ``import mlabwrap`` -> ``import scikits.mlabwrap``), which
-also implies a change from distutils to setuptools. 
+also implies a change from distutils to setuptools.
 
 The source-forge hosted `project mailing list`_ will remain the prefered place
 for users who seek support or want to provide feedback.
 
 **Compatibility Note:** Since matlab is becoming increasingly less
 ``double``-centric, the default conversion rules might change in post 1.0
-mlabwrap (even if such changes are introduced the old behavior will be
-optionally available); so whilst using ``mlab.plot([1,2,3])`` rather than
+mlabwrap; so whilst using ``mlab.plot([1,2,3])`` rather than
 ``mlab.plot(array([1.,2.,3.]))`` is fine for interactive use as in the
 tutorial below, the latter is recommended for production code.
 
@@ -64,32 +81,23 @@ license, see the mlabraw.cpp.
 Installation
 ------------
 
-If you're lucky (linux, Matlab binary in ``PATH`` and the Matlab libraries in
-``LD_LIBRARY_PATH``)::
+If you're lucky (linux, Matlab binary in ``PATH``)::
 
   python setup.py install
 
-If the Matlab libraries are not in your ``LD_LIBRARY_PATH`` the above command
-will print out a message how to rectify this (you will need to enter something
-like ``export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/MatlabR14/bin/glnx86`` in
-the shell (assuming you're using bash or zsh); and adding that line to your
-``~/.bashrc`` (or equivalent) is presumably a good idea).
+(As usual, if you want to install just in your homedir add ``--prefix=$HOME``)
 
 If things do go awry, see Troubleshooting_.
 
 Although I myself use only linux, mlabwrap should work with python>=2.3 (even
 python 2.2, with minor coaxing) and either numpy_ (recommended) or Numeric
-(obsolete) installed and Matlab 6, 6.5 or 7 under unix(tm), OS X (tm) and
+(obsolete) installed and Matlab 6, 6.5 or 7.x under unix®, OS X®  and
 windows (see `OS X`) on 32- or 64-bit machines.
-
-The windows install will for some reason complain that it can't delete a
-tempory file, but this message is harmless (just delete the file by hand, if
-necessary).
 
 Documentation
 -------------
 - for lazy people
-  
+
   >>> from mlabwrap import mlab; mlab.plot([1,2,3],'-o')
 
   .. image:: ugly-plot.png
@@ -106,7 +114,7 @@ Documentation
 
 - for a complete description:
   see the doc_ dir or just run ``pydoc mlabwrap``
-  
+
   .. _doc: doc/html/index.html
 
 - for people who like tutorials:
@@ -120,7 +128,7 @@ Tutorial
 
 Legend: [...] = omitted output
 
-Let's say you want to do use Matlab(tm) to calculate the singular value
+Let's say you want to do use Matlab® to calculate the singular value
 decomposition of a matrix.  So first you import the `mlab` pseudo-module and
 Numeric:
 
@@ -239,7 +247,7 @@ Comparison to other existing modules
 
 To get a vague impression just *how* high-level all this, consider attempting to
 do something similar to the first example with pymat (upon which the
-underlying mlabraw interface to Matlab(TM) is based).
+underlying mlabraw interface to Matlab® is based).
 
 this:
 
@@ -267,7 +275,7 @@ However *should* you need low-level access, then that is equally available
 
 >>> from mlabwrap import mlab
 >>> import mlabraw
->>> pymat.put(mlab._session, "X", [[1,2], [1,3]])
+>>> mlabraw.put(mlab._session, "X", [[1,2], [1,3]])
 [...]
 
 Before you resort to this you should ask yourself if it's really a good idea;
@@ -326,37 +334,11 @@ information relevant for installation, so it has to be in your ``PATH``
 *unless* you specify everything by hand in ``setup.py``. Of course to be able
 to use ``mlabwrap`` in any way ``matlab`` will have to be in your path anyway
 (unless that is you set the environment variable ``MLABRAW_CMD_STR`` that
-specifies how exactly Matlab(tm) should be called).
-
-
-Library path not set
-''''''''''''''''''''
-
-If on importing mlabwrap you get somthing like this::
-
- ImportError: libeng.so: cannot open shared object file: No such file or directory
-
-then chances are that the relevant Matlab libraries are not in you library
-path. You can rectify this situation in a number of ways; let's assume your
-running linux and that the libraries are in ``/opt/matlab/bin/glnx86/``
-(**NOTE**: *this used to be ``/opt/matlab/extern/lib/glnx86/`` in versions
-before 7; confusingly enough the directory still exists, but the required
-libraries no longer reside there!*) 
-
-1. As a normal user, you can append the path to LD_LIBRARY_PATH (under bash)::
-
-    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/matlab/bin/glnx86/
-
-2. As root, you can either add the Matlab library path to ``/etc/ld.so.conf``
-   and run ``ldconfig``
-
-3. Or, ugly but also works: just copy or symlink all the libraries to
-   ``/usr/lib`` or something else that's in your library path.
+specifies how exactly Matlab® should be called).
 
 
 Can't open engine
 '''''''''''''''''
-
 If you see something like ``mlabraw.error: Unable to start MATLAB(TM) engine``
 then you may be using an incompatible C++ compiler (or version), or if you're
 using unix you might not have ``csh`` installed under ``/bin/csh``, see below.
@@ -401,7 +383,7 @@ If you get something like this on ``python setup.py install``::
 
 Then you're presumably using an old version of Matlab (i.e. < 6.5);
 ``setup.py`` ought to have detected this though (try adjusting
-``MATLAB_VERSION`` by hand a write me a bug report).
+``MATLAB_VERSION`` by hand and write me a bug report).
 
 
 OS X
@@ -416,6 +398,8 @@ Notes on running
 
       export  DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH$:/Applications/MATLAB701/bin/mac/
       export MLABRAW_CMD_STR=/Applications/MATLAB701/bin/matlab
+
+  [Edit: I'm not sure ``DYLD_LIBRARY_PATH`` modification is still necessary.]
 
 - As far as graphics commands go, the python interpreter will need to  be run
   from within the X11 xterm to be able to display anything to the  screen.
@@ -433,7 +417,7 @@ Windows
 '''''''
 
 I'm thankfully not using windows myself, but I try to keep mlabwrap working
-under windows, for which I depend on the feedback from windows users. 
+under windows, for which I depend on the feedback from windows users.
 
 Since there are several popular C++ compilers under windows, you might have to
 tell setup.py which one you'd like to use (unless it's VC 7).
@@ -446,6 +430,18 @@ Dylan T Walker writes mingw32 will also work fine, but for some reason
 
     > setup.py build --compiler=mingw32
     > setup.py install --skip-build
+
+
+Function Handles and callbacks into python
+''''''''''''''''''''''''''''''''''''''''''
+
+People sometimes try to pass a python function to a matlab function (e.g.
+``mlab.fzero(lambda x: x**2-2, 0)``) which will result in an error messages
+because callbacks into python are not implemented (I'm not even it would even
+be feasible). Whilst there is no general workaround, in some cases you can
+just create an equivalent matlab function on the fly, e.g. do something like
+this: ``mlab.fzero(mlab.eval('@(x) x^2-2', 0))``.
+
 
 
 
@@ -469,11 +465,11 @@ Credits
 -------
 
 Andrew Sterian for writing pymat without which this module would never have
-existed. 
+existed.
 
 Matthew Brett contributed numpy compatibility and nice setup.py improvements
 (which I adapted a bit) to further reduce the need for manual user
-intervention for installation. 
+intervention for installation.
 
 I'm only using linux myself -- so I gratefully acknowledge the help of Windows
 and OS X users to get things running smoothly under these OSes as well;
@@ -482,7 +478,7 @@ Zwieten, George A. Blaha and others).
 
 Matlab is a registered trademark of `The Mathworks`_.
 
-.. _The Mathworks: 
+.. _The Mathworks:
    http://www.mathworks.com
 
 .. _engdemo troubleshooting:
@@ -496,6 +492,8 @@ Matlab is a registered trademark of `The Mathworks`_.
 
 .. _list of compatible compilers:
    http://www.mathworks.com/support/tech-notes/1600/1601.html
+
+.. _Email me: a.schmolck@gmail.com
 
 .. image:: http://sourceforge.net/sflogo.php?group_id=124293&amp;type=5
    :alt: sourceforge-logo
