@@ -111,7 +111,7 @@ Fine points and limitations
     some_array[index] = value; struct.part = some_array``
 
   will have the desired effect.
-  
+
 - Matlab doesn't know scalars, or 1D arrays. Consequently all functions
   that one might expect to return a scalar or 1D array will return a 1x1
   array instead. Also, because matlab(tm) is built around the 'double'
@@ -142,7 +142,9 @@ Fine points and limitations
     mlab._autosync_dirs = False
 
 - you can customize how matlab is called by setting the environment variable
-  ``MLABRAW_CMD_STR`` (useful options ).
+  ``MLABRAW_CMD_STR`` (e.g. to add useful opitons like '-nojvm'). For the
+  rather convoluted semantics see
+  <http://www.mathworks.com/access/helpdesk/help/techdoc/apiref/engopen.html>.
 
 - if you don't want to use numpy arrays, but something else that's fine
   too::
@@ -168,7 +170,7 @@ See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
-__version__ = "1.0"
+__version__ = "1.0.1"
 __author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
 import warnings
 from pickle import PickleError
@@ -188,11 +190,11 @@ from tempfile import mktemp, gettempdir
 try: # python >= 2.3 has better mktemp
     from tempfile import mkstemp as _mkstemp
     mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
-except ImportError: 
+except ImportError:
     enumerate = lambda x: zip(xrange(sys.maxint), x) # also not in 2.2
 import mlabraw
 
-from awmstools import ipupdate,slurpIn, spitOut, isString
+from awmstools import ipupdate,slurpIn, spitOut, isString, escape
 from awmsmeta import gensym
 
 #XXX: nested access
@@ -200,27 +202,41 @@ def _flush_write_stdout(s):
     """Writes `s` to stdout and flushes. Default value for ``handle_out``."""
     sys.stdout.write(s); sys.stdout.flush()
 
+# XXX I changed this to no longer use weakrefs because it didn't seem 100%
+# reliable on second thought; need to check if we need to do something to
+# speed up proxy reclamation on the matlab side.
 class CurlyIndexer(object):
     """A helper class to mimick ``foo{bar}``-style indexing in python."""
-    def __init__(self, proxyRef):
-        self.proxyRef = proxyRef
+    def __init__(self, proxy):
+        self.proxy = proxy
     def __getitem__(self, index):
-        return self.proxyRef().__getitem__(index, '{}')
+        return self.proxy.__getitem__(index, '{}')
     def __setitem__(self, index, value):
-        self.proxyRef().__setitem__(index, value, '{}')
-        
+        self.proxy.__setitem__(index, value, '{}')
+
 class MlabObjectProxy(object):
     """A proxy class for matlab objects that can't be converted to python
-       types.
+    types.
 
-       !!! Assigning to parts of proxy objects (e.g. ``proxy[index].part =
-       [[1,2,3]]``) should *largely* work as expected, the only exception
-       would be if ``proxy.foo[index] = 3`` where ``proxy.foo[index]`` is some
-       type that can be converted to python (i.e. an array or string, (or
-       cell, if cell conversion has been enabled)), because then ``proxy.foo``
-       returns a new python object. For these cases it's necessary to do::
+    WARNING: There are impedance-mismatch issues between python and matlab
+    that make designing such a class difficult (e.g. dimensionality, indexing
+    and ``length`` work fundamentally different in matlab than in python), so
+    although this class currently tries to transparently support some stuff
+    (notably (1D) indexing, slicing and attribute access), other operations
+    (e.g. math operators and in particular __len__ and __iter__) are not yet
+    supported. Don't depend on the indexing semantics not to change.
 
-         some_array[index] = 3; proxy.foo = some_array
+    Note:
+
+    Assigning to parts of proxy objects (e.g. ``proxy[index].part =
+    [[1,2,3]]``) should *largely* work as expected, the only exception
+    would be if ``proxy.foo[index] = 3`` where ``proxy.foo[index]`` is some
+    type that can be converted to python (i.e. an array or string, (or
+    cell, if cell conversion has been enabled)), because then ``proxy.foo``
+    returns a new python object. For these cases it's necessary to do::
+
+      some_array[index] = 3; proxy.foo = some_array
+
 
        """
     def __init__(self, mlabwrap, name, parent=None):
@@ -229,10 +245,6 @@ class MlabObjectProxy(object):
         """The name is the name of the proxies representation in matlab."""
         self.__dict__['_parent'] = parent
         """To fake matlab's ``obj{foo}`` style indexing."""
-        #!!! use a weakref here so that matlab memory will be immediately
-        #    reclaimed once the proxy is no longer needed (otherwise we'd have
-        #    to wait for the cyclical GC)
-        self.__dict__['_'] = CurlyIndexer(weakref.ref(self))
     def __getstate__(self):
         "Experimental pickling support."
         if self.__dict__['_parent']:
@@ -248,15 +260,15 @@ class MlabObjectProxy(object):
 
         return {'mlab_contents' : mlab_contents,
                 'name': self._name}
-        
-        
+
+
     def __setstate__(self, state):
         "Experimental unpickling support."
         global mlab         #XXX this should be dealt with correctly
         old_name = state['name']
         mlab_name = "UNPICKLED%s__" % gensym('')
         try:
-            tmp_filename = mktemp('.mat')
+            tmp_filename = mktemp('.mat') #XXX make this prettier and safer
             spitOut(state['mlab_contents'], tmp_filename, binary=1)
             mlabraw.eval(mlab._session,
                        "TMP_UNPICKLE_STRUCT__ = load('%s', '%s');" % (
@@ -270,7 +282,7 @@ class MlabObjectProxy(object):
         finally:
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
             # FIXME clear'ing in case of error
-        
+
     def __repr__(self):
         output = []
         mlab._do('disp(%s)' % self._name, nout=0, handle_out=output.append)
@@ -290,8 +302,8 @@ class MlabObjectProxy(object):
             mlabraw.eval(self._mlabwrap._session, 'clear %s;' % self._name)
     def _get_part(self, to_get):
         if self._mlabwrap._var_type(to_get) in self._mlabwrap._mlabraw_can_convert:
-            #!!! need assignment to TMP_VAL__ because `mlabraw.get` only works with
-            #    'atomic' values like ``foo`` and not e.g. ``foo.bar``.
+            #!!! need assignment to TMP_VAL__ because `mlabraw.get` only works
+            # with 'atomic' values like ``foo`` and not e.g. ``foo.bar``.
             mlabraw.eval(self._mlabwrap._session, "TMP_VAL__=%s" % to_get)
             return self._mlabwrap._get('TMP_VAL__', remove=True)
         return type(self)(self._mlabwrap, to_get, self)
@@ -303,41 +315,68 @@ class MlabObjectProxy(object):
             self._mlabwrap._set("TMP_VAL__", value)
             mlabraw.eval(self._mlabwrap._session, "%s = TMP_VAL__;" % to_set)
             mlabraw.eval(self._mlabwrap._session, 'clear TMP_VAL__;')
-        
+
     def __getattr__(self, attr):
-        return self._get_part("%s.%s" % (self._name, attr))
+        if attr == "_":
+            return self.__dict__.setdefault('_', CurlyIndexer(self))
+        else:
+            return self._get_part("%s.%s" % (self._name, attr))
     def __setattr__(self, attr, value):
         self._set_part("%s.%s" % (self._name, attr), value)
-    #FIXME: those two only work ok for vectors
+    # FIXME still have to think properly about how to best translate Matlab semantics here...
+    def __len__(self):
+        raise TypeError("%s does not yet implement __len__" % type(self).__name__)
+    def __iter__(self):
+        raise TypeError("%s does not yet implement iteration" % type(self).__name__)
+    def _matlab_str_repr(s):
+        if '\n' not in s:
+            return "'%s'" % s.replace("'","''")
+        else:
+            # Matlab's string literals suck. They can't represent all
+            # strings, so we need to use sprintf
+            return "sprintf('%s')" % escape(s.replace("'","''").replace("%", "%%"))
+    _matlab_str_repr = staticmethod(_matlab_str_repr)
+    #FIXME: those two only work ok for 1D indexing
     def _convert_index(self, index):
         if isinstance(index, int):
-            return str(index + 1)
+            return str(index + 1) # -> matlab 1-based indexing
         elif isString(index):
-            return "'%s'" % index
+            return self._matlab_str_repr(index)
         elif isinstance(index, slice):
             if index == slice(None,None,None):
                 return ":"
-            elif index.step not in (None,1) or index.stop is None:
+            elif index.step not in (None,1):
                 raise ValueError("Illegal index for a proxy %r" % index)
             else:
-                return '%d:%d' % ((index.start or 0) + 1, index.stop)
+                start = (index.start or 0) + 1
+                if start == 0: start_s = 'end'
+                elif start < 0: start_s = 'end%d' % start
+                else: start_s = '%d' % start
+
+                if index.stop is None: stop_s = 'end'
+                elif index.stop < 0: stop_s = 'end%d' % index.stop
+                else: stop_s = '%d' % index.stop
+
+                return '%s:%s' % (start_s, stop_s)
         else:
             raise TypeError("Unsupported index type: %r." % type(index))
     def __getitem__(self, index, parens='()'):
-        """XXX Semi-finished HACK. Matlab decadently allows overloading *2*
-           different indexing parens, ``()`` and ``{}``, hence the ``parens``
-           option."""
+        """WARNING: Semi-finished, semantics might change because it's not yet
+           clear how to best bridge the matlab/python impedence match.
+           HACK: Matlab decadently allows overloading *2* different indexing parens,
+           ``()`` and ``{}``, hence the ``parens`` option."""
         index = self._convert_index(index)
         return self._get_part("".join([self._name,parens[0],index,parens[1]]))
     def __setitem__(self, index, value, parens='()'):
+        """WARNING: see ``__getitem__``."""
         index = self._convert_index(index)
         return self._set_part("".join([self._name,parens[0],index,parens[1]]),
                                       value)
-    
+
 class MlabConversionError(Exception):
     """Raised when a mlab type can't be converted to a python primitive."""
     pass
-    
+
 class MlabWrap(object):
     """This class does most of the wrapping work. It manages a single matlab
        session (you can in principle have multiple open sessions if you want,
@@ -393,13 +432,15 @@ class MlabWrap(object):
 ##         maxlen = max(map(len, fieldnames))
 ##         return "\n".join(["%*s: %s" % (maxlen, (`fv`,`fv`[:20] + '...')[len(`fv`) > 23])
 ##                                        for fv in fieldvalues])
-        
+
     def _var_type(self, varname):
-        mlabraw.eval(self._session, "TMP_CLS__ = class(%s);" % varname) #FIXME for funcs we would need ''s
+        mlabraw.eval(self._session,
+                     "TMP_CLS__ = class(%(x)s); if issparse(%(x)s),"
+                     "TMP_CLS__ = [TMP_CLS__,'-sparse']; end;" % dict(x=varname))
         res_type = mlabraw.get(self._session, "TMP_CLS__")
         mlabraw.eval(self._session, "clear TMP_CLS__;") # unlikely to need try/finally to ensure clear
         return res_type
-    
+
     def _make_proxy(self, varname, parent=None, constructor=MlabObjectProxy):
         """Creates a proxy for a variable.
 
@@ -411,7 +452,7 @@ class MlabWrap(object):
         res = constructor(self, proxy_val_name, parent)
         self._proxies[proxy_val_name] = res
         return res
-    
+
     def _get_cell(self, varname):
         # XXX can currently only handle ``{}`` and 1D cells
         mlabraw.eval(self._session,
@@ -437,7 +478,7 @@ class MlabWrap(object):
         if vartype == 'cell':
             return self._get_cell(varname)
 
-            
+
     def _get_values(self, varnames):
         if not varnames: raise ValueError("No varnames") #to prevent clear('')
         res = []
@@ -445,13 +486,13 @@ class MlabWrap(object):
             res.append(self._get(varname))
         mlabraw.eval(self._session, "clear('%s');" % "','".join(varnames)) #FIXME wrap try/finally?
         return res
-    
+
     def _do(self, cmd, *args, **kwargs):
         """Semi-raw execution of a matlab command.
-        
+
         Smartly handle calls to matlab, figure out what to do with `args`,
         and when to use function call syntax and not.
-        
+
         If no `args` are specified, the ``cmd`` not ``result = cmd()`` form is
         used in Matlab -- this also makes literal Matlab commands legal
         (eg. cmd=``get(gca, 'Children')``).
@@ -463,7 +504,7 @@ class MlabWrap(object):
         **Beware that if you use don't specify ``nout=0`` for a `cmd` that
         never returns a value will raise an error** (because assigning a
         variable to a call that doesn't return a value is illegal in matlab).
-        
+
 
         ``cast`` specifies which typecast should be applied to the result
         (e.g. `int`), it defaults to none.
@@ -550,7 +591,7 @@ class MlabWrap(object):
         if remove:
             mlabraw.eval(self._session, "clear('%s');" % varname)
         return var
-    
+
     def _set(self, name, value):
         if isinstance(value, MlabObjectProxy):
             mlabraw.eval(self._session, "%s = %s;" % (name, value._name))
@@ -563,7 +604,7 @@ class MlabWrap(object):
             return self._do(name, *args, **ipupdate({'nout': nout}, kwargs))
         mlab_command.__doc__ = "\n" + doc
         return mlab_command
-            
+
     # XXX this method needs some refactoring, but only after it is clear how
     # things should be done (e.g. what should be extracted from docstrings and
     # how)
@@ -586,7 +627,7 @@ class MlabWrap(object):
         doc = self._do("help('%s')" % name)
         if   typ == 0: # doesn't exist
             raise AttributeError("No such matlab object: %s" % name)
-        # i.e. we have a builtin, mex or similar        
+        # i.e. we have a builtin, mex or similar
         elif typ != 2:
             # well, obviously matlab doesn't offer much in terms of
             # introspective capabilities for builtins (*completely* unlike
@@ -599,7 +640,7 @@ class MlabWrap(object):
               (?P<argout>
                     # A = FOO...
                     (?:[A-Z]+)
-                  |                     
+                  |
                     # [A,B] = FOO...
                     \[
                       (?:[A-Z]+,\s*)+[A-Z]+
@@ -610,7 +651,7 @@ class MlabWrap(object):
             # the command name itself, upcased
             (?P<cmd>%s)
             # the (optional) arguments; either
-            (?: 
+            (?:
                 # FOO BAR QUUX (command syntax; this re doesn't work for
                 # pathological cases like `print` and `delete`)
                 (?P<cmdargs>(?:\s+[A-Z]+)+)?\s
@@ -661,10 +702,10 @@ class MlabWrap(object):
         #!!! attr, *not* name, because we might have python keyword name!
         setattr(self, attr, mlab_command)
         return mlab_command
-        
-                 
-        
-    
+
+
+
+
 mlab = MlabWrap()
 # XXX fixup the `round` builtin; there might be others that could use a hand
 mlab.round = mlab._make_mlab_command('round', nout=1, doc=mlab.help('round'))
