@@ -2,7 +2,7 @@
 ################## mlabwrap: transparently wraps matlab(tm) ##################
 ##############################################################################
 ##
-## o author: Alexander Schmolck (a.schmolck@gmx.net)
+## o author: Alexander Schmolck <a.schmolck@gmx.net>
 ## o created: 2002-05-29 21:51:59+00:40
 ## o last modified: $Date$
 ## o version: see `__version__`
@@ -171,7 +171,7 @@ See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 __docformat__ = "restructuredtext en"
 __revision__ = "$Id$"
 __version__ = "1.0.1"
-__author__   = "Alexander Schmolck (A.Schmolck@gmx.net)"
+__author__   = "Alexander Schmolck <a.schmolck@gmx.net>"
 import warnings
 from pickle import PickleError
 import operator
@@ -186,16 +186,10 @@ except ImportError:
     ndarray = Numeric.ArrayType
 
 
-from tempfile import mktemp, gettempdir
-try: # python >= 2.3 has better mktemp
-    from tempfile import mkstemp as _mkstemp
-    mktemp = lambda *args,**kwargs: _mkstemp(*args, **kwargs)[1]
-except ImportError:
-    enumerate = lambda x: zip(xrange(sys.maxint), x) # also not in 2.2
+from tempfile import gettempdir
 import mlabraw
 
-from awmstools import ipupdate,slurpIn, spitOut, isString, escape
-from awmsmeta import gensym
+from awmstools import update, gensym, slurp, spitOut, isString, escape, strToTempfile
 
 #XXX: nested access
 def _flush_write_stdout(s):
@@ -254,7 +248,7 @@ class MlabObjectProxy(object):
         tmp_filename = os.path.join(gettempdir(), "mlab_pickle_%s.mat" % self._mlabwrap._session)
         try:
             mlab.save(tmp_filename, self._name)
-            mlab_contents = slurpIn(tmp_filename, binary=1)
+            mlab_contents = slurp(tmp_filename, binary=1)
         finally:
             if os.path.exists(tmp_filename): os.remove(tmp_filename)
 
@@ -267,9 +261,10 @@ class MlabObjectProxy(object):
         global mlab         #XXX this should be dealt with correctly
         old_name = state['name']
         mlab_name = "UNPICKLED%s__" % gensym('')
+        tmp_filename = None
         try:
-            tmp_filename = mktemp('.mat') #XXX make this prettier and safer
-            spitOut(state['mlab_contents'], tmp_filename, binary=1)
+            tmp_filename = strToTempfile(
+                state['mlab_contents'], suffix='.mat', binary=1)
             mlabraw.eval(mlab._session,
                        "TMP_UNPICKLE_STRUCT__ = load('%s', '%s');" % (
                 tmp_filename, old_name))
@@ -280,7 +275,8 @@ class MlabObjectProxy(object):
             mlab._make_proxy(mlab_name, constructor=lambda *args: self.__init__(*args) or self)
             mlabraw.eval(mlab._session, 'clear %s;' % mlab_name)
         finally:
-            if os.path.exists(tmp_filename): os.remove(tmp_filename)
+            if tmp_filename and os.path.exists(tmp_filename):
+                os.remove(tmp_filename)
             # FIXME clear'ing in case of error
 
     def __repr__(self):
@@ -295,10 +291,10 @@ class MlabObjectProxy(object):
 ##             rep = ""
         return "<%s of matlab-class: %r; internal name: %r; has parent: %s>\n%s" % (
             type(self).__name__, klass,
-            self._name, ['yes', 'no'][not self._parent],
+            self._name, ['yes', 'no'][self._parent is None],
             rep)
     def __del__(self):
-        if not self._parent:
+        if self._parent is None:
             mlabraw.eval(self._mlabwrap._session, 'clear %s;' % self._name)
     def _get_part(self, to_get):
         if self._mlabwrap._var_type(to_get) in self._mlabwrap._mlabraw_can_convert:
@@ -324,6 +320,8 @@ class MlabObjectProxy(object):
     def __setattr__(self, attr, value):
         self._set_part("%s.%s" % (self._name, attr), value)
     # FIXME still have to think properly about how to best translate Matlab semantics here...
+    def __nonzero__(self):
+        raise TypeError("%s does not yet implement truth testing" % type(self).__name__)
     def __len__(self):
         raise TypeError("%s does not yet implement __len__" % type(self).__name__)
     def __iter__(self):
@@ -334,7 +332,7 @@ class MlabObjectProxy(object):
         else:
             # Matlab's string literals suck. They can't represent all
             # strings, so we need to use sprintf
-            return "sprintf('%s')" % escape(s.replace("'","''").replace("%", "%%"))
+            return "sprintf('%s')" % escape(s).replace("'","''").replace("%", "%%")
     _matlab_str_repr = staticmethod(_matlab_str_repr)
     #FIXME: those two only work ok for 1D indexing
     def _convert_index(self, index):
@@ -385,7 +383,7 @@ class MlabWrap(object):
        with '_') to the appropriate matlab function calls. The details of this
        handling can be controlled with a number of instance variables,
        documented below."""
-    __all__ = [] #XXX a hack, so that this class can fake a module
+    __all__ = [] #XXX a hack, so that this class can fake a module; don't mutate
     def __init__(self):
         """Create a new matlab(tm) wrapper object.
         """
@@ -446,6 +444,7 @@ class MlabWrap(object):
 
         XXX create and cache nested proxies also here.
         """
+        # FIXME why not just use gensym here?
         proxy_val_name = "PROXY_VAL%d__" % self._proxy_count
         self._proxy_count += 1
         mlabraw.eval(self._session, "%s = %s;" % (proxy_val_name, varname))
@@ -601,7 +600,7 @@ class MlabWrap(object):
 
     def _make_mlab_command(self, name, nout, doc=None):
         def mlab_command(*args, **kwargs):
-            return self._do(name, *args, **ipupdate({'nout': nout}, kwargs))
+            return self._do(name, *args, **update({'nout':nout}, kwargs))
         mlab_command.__doc__ = "\n" + doc
         return mlab_command
 
@@ -618,83 +617,18 @@ class MlabWrap(object):
         # print_ -> print
         if attr[-1] == "_": name = attr[:-1]
         else             : name = attr
-        typ = self._do("exist('%s')" % name)
-        # make sure we get an int out of this (mainly for `Matrix`)
         try:
-            typ = int(typ)              # only works if autoconverted to 0d
-        except TypeError:
-            typ = numpy.ravel(typ)[0]
-        doc = self._do("help('%s')" % name)
-        if   typ == 0: # doesn't exist
-            raise AttributeError("No such matlab object: %s" % name)
-        # i.e. we have a builtin, mex or similar
-        elif typ != 2:
-            # well, obviously matlab doesn't offer much in terms of
-            # introspective capabilities for builtins (*completely* unlike
-            # python <cough>), but with the aid of a simple regexp, we may
-            # still find out what we want.
-            callSigRE = re.compile(r"""
-            ^\s*
-            # opitonally return values, either
-            (?:
-              (?P<argout>
-                    # A = FOO...
-                    (?:[A-Z]+)
-                  |
-                    # [A,B] = FOO...
-                    \[
-                      (?:[A-Z]+,\s*)+[A-Z]+
-                    \]
-
-              )\s*=\s*
-            )?
-            # the command name itself, upcased
-            (?P<cmd>%s)
-            # the (optional) arguments; either
-            (?:
-                # FOO BAR QUUX (command syntax; this re doesn't work for
-                # pathological cases like `print` and `delete`)
-                (?P<cmdargs>(?:\s+[A-Z]+)+)?\s
-             |
-                # FOO(BAR, ...) (function call syntax)
-                (?P<argin>
-                    \(
-                    .*
-                      (?:
-                       (?:\.\.\.),\s*
-                       |
-                       (?:['\w]+),\s*
-                      )*
-                    \)
-                )
-            )
-            """ % name.upper(), re.X | re.M | re.I)
-            match_at = lambda what: match[callSigRE.groupindex[what]-1]
-            maxout = 0
-            maxin = 0
-            for match in callSigRE.findall(doc[doc.find("\n"):]):
-                argout = match_at('argout')
-                #FIXME how are infinite nouts specified in docstrings?
-                if argout:
-                    maxout = max(maxout, len(argout.split(',')))
-            if maxout == 0:
-                # an additional HACK for docs that aren't following the
-                # ``foo = bar(...)`` convention
-                # XXX: doesn't work for 'DISPLAY(x) is called...' etc.
-                if re.search(r'\b%s\(.+?\) (?:is|return)' % name.upper(), doc):
-                    maxout = 1
-            nout = maxout #XXX
-        else: #XXX should this be ``elif typ == 2:`` ?
-            # XXX should really find out under what conditions this fails,
-            # it's e.g. not clear to me why ``nargout('netcdf')`` won't
-            # work.
-            try:
-                nout = self._do("nargout('%s')" % name)
-            except mlabraw.error, msg:
+            nout = self._do("nargout('%s')" % name)
+        except mlabraw.error, msg:
+            typ = numpy.ravel(self._do("exist('%s')" % name))[0]
+            if   typ == 0: # doesn't exist
+                raise AttributeError("No such matlab object: %s" % name)
+            else:
                 warnings.warn(
-                    "Couldn't ascertain number of output args" + \
-                    "for '%s', assume 1." % name)
+                    "Couldn't ascertain number of output args"
+                    "for '%s', assuming 1." % name)
                 nout = 1
+        doc = self._do("help('%s')" % name)
         # play it safe only return 1st if nout >= 1
         # XXX are all ``nout>1``s also useable as ``nout==1``s?
         nout = nout and 1
@@ -704,11 +638,7 @@ class MlabWrap(object):
         return mlab_command
 
 
-
-
 mlab = MlabWrap()
-# XXX fixup the `round` builtin; there might be others that could use a hand
-mlab.round = mlab._make_mlab_command('round', nout=1, doc=mlab.help('round'))
 MlabError = mlabraw.error
 
 def saveVarsInMat(filename, varNamesStr, outOf=None, **opts):
