@@ -5,15 +5,15 @@ mlabwrap v1.0.1
 ===============
 
 :copyright: 2003-2009 Alexander Schmolck
-:date: 2009-03-20
+:date: 2009-03-23
 
 
 .. contents::
 
 Description
 -----------
-A high-level python to `Matlab®`_ bridge. Let's Matlab look like a normal
-python library.
+Mlabwrap is a high-level python to `Matlab®`_ bridge that lets Matlab look
+like a normal python library.
 
     Thanks for your terrific work on this very-useful Python tool!
 
@@ -30,7 +30,7 @@ News
 ----
 
 
-**2009-03-20** 1.0.1 is finally out. This is a minor release that fixes some
+**2009-03-23** 1.0.1 is finally out. This is a minor release that fixes some
 annoying but mostly minor bugs in mlabwrap (it also slightly improves the
 indexing support for proxy-objects, but the exact semantics are still subject
 to change.)
@@ -48,35 +48,25 @@ to change.)
   unit-tests with homegrown matlab helper class.
 
 - several bugs squashed (length of mlabraw.eval'ed strings is checked, better
-  error-messages etc.) and some small documentation improvements.
+  error-messages etc.) and some small documentation improvements and quite a
+  few code clean-ups.
 
-
-**2007-04-10** 1.0final is out! Compared to the last beta, setup.py should now
-work better under windows (Borland C++ support, inter alia). Also included is
-a work-around for an ipython bug that causes spurious error message when using
-mlabwrap with some versions of ipython.
-
-This is the last version with optional Numeric support. Future versions of
-mlabwrap will be hosted as a scikits project on scipy (see
-<http://www.scipy.org/MlabWrap>), require numpy and adopt the scipy package
-structure (i.e. ``import mlabwrap`` -> ``import scikits.mlabwrap``), which
-also implies a change from distutils to setuptools.
-
-The source-forge hosted `project mailing list`_ will remain the prefered place
-for users who seek support or want to provide feedback.
-
-**Compatibility Note:** Since matlab is becoming increasingly less
-``double``-centric, the default conversion rules might change in post 1.0
-mlabwrap; so whilst using ``mlab.plot([1,2,3])`` rather than
-``mlab.plot(array([1.,2.,3.]))`` is fine for interactive use as in the
-tutorial below, the latter is recommended for production code.
-
+Many thanks to Iain Murray at Toronto and Nicolas Pinto at MIT and for letting
+themselves be roped into helping me test my stupidly broken release
+candidates.
 
 License
 -------
 
 mlabwrap is under MIT license, see LICENSE.txt. mlabraw is under a BSD-style
 license, see the mlabraw.cpp.
+
+Download
+--------
+<http://sourceforge.net/projects/mlabwrap/>
+
+(P.S. the activity stats are bogus -- look at the release dates).
+
 
 Installation
 ------------
@@ -85,14 +75,15 @@ If you're lucky (linux, Matlab binary in ``PATH``)::
 
   python setup.py install
 
-(As usual, if you want to install just in your homedir add ``--prefix=$HOME``)
+(As usual, if you want to install just in your homedir add ``--prefix=$HOME``;
+and make sure your ``PYTHONPATH`` is set accordingly.)
 
 If things do go awry, see Troubleshooting_.
 
-Although I myself use only linux, mlabwrap should work with python>=2.3 (even
-python 2.2, with minor coaxing) and either numpy_ (recommended) or Numeric
-(obsolete) installed and Matlab 6, 6.5 or 7.x under unix®, OS X®  and
-windows (see `OS X`) on 32- or 64-bit machines.
+Although I myself use only linux, mlabwrap should work with python>=2.4 (even
+downto python 2.2, with minor coaxing) and either numpy_ (recommended) or
+Numeric (obsolete) installed and Matlab 6, 6.5 or 7.x under Linux, OS X® and
+Windows® (see `OS X`_) on 32- or 64-bit machines.
 
 Documentation
 -------------
@@ -113,23 +104,26 @@ Documentation
      :alt: surface-plot
 
 - for a complete description:
-  see the doc_ dir or just run ``pydoc mlabwrap``
-
-  .. _doc: doc/html/index.html
+  Just run ``pydoc mlabwrap``.
 
 - for people who like tutorials:
   see below
 
 
 Tutorial
---------
+''''''''
 
-[This is adapted from an email I wrote someone who asked me about mlabwrap.]
+[This is adapted from an email I wrote someone who asked me about mlabwrap.
+**Compatibility Note:** Since matlab is becoming increasingly less
+``double``-centric, the default conversion rules might change in post 1.0
+mlabwrap; so whilst using ``mlab.plot([1,2,3])`` rather than
+``mlab.plot(array([1.,2.,3.]))`` is fine for interactive use as in the
+tutorial below, the latter is recommended for production code.]
 
 Legend: [...] = omitted output
 
 Let's say you want to do use Matlab® to calculate the singular value
-decomposition of a matrix.  So first you import the `mlab` pseudo-module and
+decomposition of a matrix.  So first you import the ``mlab`` pseudo-module and
 Numeric:
 
 
@@ -143,7 +137,7 @@ GSVD   Generalized Singular Value Decompostion.
 SVD    Singular value decomposition.
 [...]
 
-Then you look up what `svd` actually does, just as you'd look up the
+Then you look up what ``svd`` actually does, just as you'd look up the
 docstring of a python function:
 
 >>> help(mlab.svd)
@@ -191,7 +185,7 @@ E.g. to create a netlab_ neural net with 2 input, 3 hidden and 1 output node:
 
 >>> net = mlab.mlp(2,3,1,'logistic')
 
-Looking at `net` reveals that is a proxy:
+Looking at ``net`` reveals that is a proxy:
 
 >>> net
 <MLabObjectProxy of matlab-class: 'struct'; internal name: 'PROXY_VAL0__';
@@ -207,7 +201,7 @@ has parent: no>
       w2: [3x3 double]
       b2: [-0.6681 0.3572 0.8118]
 
-When `net` or other proxy objects a passed to mlab functions, they are
+When ``net`` or other proxy objects a passed to mlab functions, they are
 automatically converted into the corresponding Matlab-objects. So to obtain
 a trained network on the 'xor'-problem, one can simply do:
 
@@ -243,7 +237,7 @@ array([       [             -inf]])
 
 
 Comparison to other existing modules
-------------------------------------
+''''''''''''''''''''''''''''''''''''
 
 To get a vague impression just *how* high-level all this, consider attempting to
 do something similar to the first example with pymat (upon which the
@@ -264,7 +258,7 @@ becomes this:
 >>> C = pymat.get(session, 'C')
 
 Plus, there is virtually no error-reporting at all, if something goes wrong in
-the `eval` step, you'll only notice because the subsequent `get` mysteriously
+the ``eval`` step, you'll only notice because the subsequent ``get`` mysteriously
 fails. And of course something more fancy like the netlab example above (which
 uses proxies to represent matlab class instances in python) would be
 impossible to accomplish in pymat in a similar manner.
@@ -283,21 +277,31 @@ the inherent overhead associated with Matlab's C interface appears to be quite
 high, so the additional python overhead shouldn't normally matter much -- if
 efficiency becomes an issue it's probably better to try to chunk together
 several matlab commands in an ``.m``-file in order to reduce the number of
-matlab calls.
+matlab calls. If you're looking for a way to execute "raw" matlab for specific
+purposes, ``mlab._do`` is probably a better idea. The low-level ``mlabraw``
+API is much more likely to change in completely backwards incompatible ways in
+future versions of mlabwrap. You've been warned.
 
 What's Missing?
----------------
+'''''''''''''''
 
 - Handling of as arrays of (array) rank 3 or more as well as
   non-double/complex arrays (currently everything is converted to
   double/complex for passing to Matlab and passing non-double/complex from
   Matlab is not not supported). Both should be reasonably easy to implement,
-  but I currently don't need them.
+  but not that many people have asked for it and I haven't got around to it
+  yet.
+
 - Better support for cells.
+
+- Thread-safety. If you think there's a need please let me know (on the
+  `project mailing list`_); at the moment you can /probably/ get away with
+  using one seperate MlabWrap object per thread without implementing your own
+  locking, but even that hasn't been tested.
 
 
 Implementation Notes
---------------------
+''''''''''''''''''''
 
 So how does it all work?
 
@@ -309,26 +313,33 @@ strings...) to Matlab matrices and vice versa. On top of this I then built a
 pure python module that with various bells and whistles gives the impression
 of providing a Matlab "module".
 
-This is done by a class that manages a single Matlab session (of which
-`mlab` is an instance) and creates methods with docstrings
-on-the-fly. Thus, on the first call of ``mlab.abs(1)``, the wrapper looks
-whether there already is a matching function in the cache. If not, the
-docstring for ``abs`` is looked up in Matlab and Matlab's flimsy
-introspection abilities are used to determine the number of output
-arguments (0 or more), then a function with the right docstring is
-dynamically created and assigned to ``mlab.abs``. This function takes care
-of the conversion of all input parameters and the return values, using
-proxies where necessary. Proxy are a bit more involved and the proxy
-pickling scheme uses Matlab's `save` command to create a binary version of
-the proxy's contents which is then pickled, together with the proxy object
-by python itself. Hope that gives a vague idea, for more info study the
-source.
+This is done by a class that manages a single Matlab session (of which ``mlab``
+is an instance) and creates methods with docstrings on-the-fly. Thus, on the
+first call of ``mlab.abs(1)``, the wrapper looks whether there already is a
+matching function in the cache. If not, the docstring for ``abs`` is looked up
+in Matlab and Matlab's flimsy introspection abilities are used to determine
+the number of output arguments (0 or more), then a function with the right
+docstring is dynamically created and assigned to ``mlab.abs``. This function
+takes care of the conversion of all input parameters and the return values,
+using proxies where necessary. Proxy are a bit more involved and the proxy
+pickling scheme uses Matlab's ``save`` command to create a binary version of
+the proxy's contents which is then pickled, together with the proxy object by
+python itself. Hope that gives a vague idea, for more info study the source.
 
 Troubleshooting
----------------
+'''''''''''''''
+
+Strange hangs under Matlab® R2008a
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+It looks like this particular version of matlab might be broken (I was able to
+reproduced the problem with just a stripped down ``engdemo.c`` under 64-bit
+linux). R2008b is reported to be working correctly (as are several earlier
+versions).
+
 
 matlab not in path
-''''''''''''''''''
+~~~~~~~~~~~~~~~~~~
 ``setup.py`` will call ``matlab`` in an attempt to query the version and other
 information relevant for installation, so it has to be in your ``PATH``
 *unless* you specify everything by hand in ``setup.py``. Of course to be able
@@ -338,7 +349,7 @@ specifies how exactly Matlab® should be called).
 
 
 Can't open engine
-'''''''''''''''''
+~~~~~~~~~~~~~~~~~
 If you see something like ``mlabraw.error: Unable to start MATLAB(TM) engine``
 then you may be using an incompatible C++ compiler (or version), or if you're
 using unix you might not have ``csh`` installed under ``/bin/csh``, see below.
@@ -376,7 +387,7 @@ the Mathworks(tm) site.
 
 
 Old Matlab version
-''''''''''''''''''
+~~~~~~~~~~~~~~~~~~
 If you get something like this on ``python setup.py install``::
 
  mlabraw.cpp:634: `engGetVariable' undeclared (first use this function)
@@ -387,7 +398,7 @@ Then you're presumably using an old version of Matlab (i.e. < 6.5);
 
 
 OS X
-''''
+~~~~
 
 Josh Marshall tried it under OS X and sent me the following notes (thanks!).
 
@@ -414,7 +425,7 @@ Notes on running
       export MLABRAW_CMD_STR="/Applications/MATLAB701/bin/matlab -nodesktop"
 
 Windows
-'''''''
+~~~~~~~
 
 I'm thankfully not using windows myself, but I try to keep mlabwrap working
 under windows, for which I depend on the feedback from windows users.
@@ -433,7 +444,7 @@ Dylan T Walker writes mingw32 will also work fine, but for some reason
 
 
 Function Handles and callbacks into python
-''''''''''''''''''''''''''''''''''''''''''
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 People sometimes try to pass a python function to a matlab function (e.g.
 ``mlab.fzero(lambda x: x**2-2, 0)``) which will result in an error messages
@@ -453,12 +464,6 @@ Private email is OK, but the preferred way is via the `project mailing list`_
 .. _project mailing list:
    http://lists.sourceforge.net/lists/listinfo/mlabwrap-user
 
-Download
---------
-
-<http://sourceforge.net/projects/mlabwrap/>
-
-(P.S. the activity stats are bogus -- look at the release dates).
 
 
 Credits
