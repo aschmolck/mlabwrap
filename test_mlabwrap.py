@@ -7,6 +7,7 @@
 ## o last modified: $Date$
 
 import sys, os, re
+import gc
 from pdb import pm # for debugging test failures
 try:
     import numpy
@@ -223,15 +224,9 @@ class mlabwrapTC(NumericTestCase):
         self.failUnlessRaises(TypeError, mlab._set, 'a', [[[1]]])
         self.failUnlessRaises(MlabError, mlab._get, 'dontexist')
         self.failUnlessRaises(MlabError,mlab.round)
-        try: # also check errormessage for above
-            mlab.round()
-        except MlabError, msg:
-            pass
-            #FIXME unfortunately these messages keep changing
-##             assert str(msg).strip() == \
-##                    'Error using ==> round\nIncorrect number of inputs.'
-        else:
-            assert False
+        assert toscalar(mlab.round(1.6)) == 2.0
+        self.assertEqual(mlab.max([20,10],nout=2), (numpy.array([[20]]), array([[1]])))
+        self.assertEqual(mlab.max([20,10]), numpy.array([[20]]))
     def testDoc(self):
         """Test that docstring extraction works OK."""
         mlab.who.__doc__.index('WHO lists the variables in the current workspace')
@@ -286,19 +281,23 @@ class mlabwrapTC(NumericTestCase):
         assert bct[0].type == 'BIG' and sct[0].type == 'big'
         mlab._set('foo', 1)
         assert mlab._get('foo') == numpy.array([1.])
-        assert not mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
-               ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
+        assert (mlab._do("{'A', 'b', {3,4, {5,6}}}") !=
+                ['A', 'b', [array([[ 3.]]), array([[ 4.]]),
+                            [array([[ 5.]]), array([[ 6.]])]]])
         mlab._dont_proxy['cell'] = True
-        assert mlab._do("{'a', 'b', {3,4, {5,6}}}") == \
-               ['a', 'b', [array([ 3.]), array([ 4.]), [array([ 5.]), array([ 6.])]]]
+        self.assertEquals(mlab._do("{'a', 'b', {3,4, {5,6}}}"),
+                          ['a', 'b', [array([ 3.]), array([ 4.]),
+                                      [array([ 5.]), array([ 6.])]]])
         mlab._dont_proxy['cell'] = False
         mlab.clear('foo')
         self.assertRaises(MlabError, mlab._get, 'foo')
-        assert degensym_proxy(repr(sct)) == (
-            "<MlabObjectProxy of matlab-class: 'struct'; "
-            "internal name: 'PROXY_VAL__'; has parent: no>\n"
-            "1x2 struct array with fields:\n"
-            "    type\n    color\n    x\n\n")
+        # XXX: note to self: ``format compact`` in startup.m will cause this
+        # test to fail, but should otherwise be harmless.
+        self.assertEquals(degensym_proxy(repr(sct)),
+                          "<MlabObjectProxy of matlab-class: 'struct'; "
+                          "internal name: 'PROXY_VAL__'; has parent: no>\n"
+                          "1x2 struct array with fields:\n"
+                          "    type\n    color\n    x\n\n")
         #FIXME: add tests for assigning and nesting proxies
         ## ensure proxies work OK as arguments
         self.assertEqual(mlab.size(sct), array([[1., 2.]]))
@@ -308,7 +307,9 @@ class mlabwrapTC(NumericTestCase):
         self.assertRaises(MlabError, mlab.svd, sct)
         self.assertEqual(mlab.size(sct, [2]), array([[2]]))
         mlab._dont_proxy['cell'] = True
-        assert map(degensym_proxy,without(mlab.who(), WHO_AT_STARTUP)) == (['PROXY_VAL__', 'PROXY_VAL__'])
+        gc.collect()
+        assert map(degensym_proxy,without(mlab.who(), WHO_AT_STARTUP)) == (
+            ['PROXY_VAL__', 'PROXY_VAL__'])
         # test pickling
         pickleFilename = mktemp()
         f = open(pickleFilename, 'wb')
@@ -418,10 +419,13 @@ class mlabwrapTC(NumericTestCase):
         self.assertRaises(TypeError, mlabraw.get, object(), 'a')
         self.assertRaises(TypeError, mlabraw.eval, object(), '1')
 
-        mlabraw.eval(mlab._session, '1'*(BUFSIZE-1))
+        # -100 is picked kinda arbitrarily to account for internal "overhead";
+        # I don't want to hardcode the exact value; users can assume 1000
+        # chars is safe
+        mlabraw.eval(mlab._session, '1'*(BUFSIZE-100))
         assert numpy.inf == mlabraw.get(mlab._session, 'ans');
         # test for buffer overflow detection
-        self.assertRaises(RuntimeError, mlabraw.eval,mlab._session, '1'*BUFSIZE)
+        self.assertRaises(Exception, mlabraw.eval, mlab._session, '1'*BUFSIZE)
         self.assertEqual(mlabraw.eval(mlab._session, r"fprintf('1\n')"),'1\n')
         try:
             self.assertEqual(mlabraw.eval(mlab._session, r"1"),'')
@@ -443,11 +447,11 @@ suite = TestSuite(map(unittest.makeSuite,
 unittest.TextTestRunner(verbosity=2).run(suite)
 
 #FIXME strangely enough we can't test this in the function!
-import gc
 gc.collect()
 mlab._dont_proxy['cell'] = True
 # XXX got no idea where HOME comes from, not there under win
-assert without(mlab.who(), WHO_AT_STARTUP) == ['bar']
+assert without(mlab.who(), WHO_AT_STARTUP) == ['bar'], "who is:%r" % mlab.who()
 mlab.clear()
-assert without(mlab.who(), ['MLABRAW_ERROR_']) == [] == mlab._do('{}')
+assert without(mlab.who(), ['MLABRAW_ERROR_']) == [] == mlab._do('{}'),(
+    "who is:%r" % mlab.who())
 mlab._dont_proxy['cell'] = False
