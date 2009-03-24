@@ -1,4 +1,3 @@
-include *.py *.html *.txt
-recursive-include test *
-recursive-include doc *
+include *.py awmstools.py README.txt
+recursive-include tests *
 
