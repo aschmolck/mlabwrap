@@ -22,8 +22,8 @@ MATLAB_LIBRARIES=None       # e.g: ['eng', 'mx', 'mat', 'mi', 'ut']
 USE_NUMERIC=None            # use obsolete Numeric instead of numpy?
 PYTHON_INCLUDE_DIR=None     # where to find numpy/*.h or Numeric/*.h
 
-SUPPORT_MODULES= ["awmstools", "awmsmeta"] # set to [] if already
-                                           # installed
+SUPPORT_MODULES= ["awmstools"] # set to [] if already
+                               # installed
 ########################### WINDOWS ONLY ###########################
 #  Option 1: Visual Studio
 #  -----------------------
