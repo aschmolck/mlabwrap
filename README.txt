@@ -1,11 +1,11 @@
 .. -*- mode: rst; coding: utf-8; -*-
 
-===============
-mlabwrap v1.0.1
-===============
+=================
+mlabwrap v1.1-pre
+=================
 
-:copyright: 2003-2009 Alexander Schmolck
-:date: 2009-03-23
+:copyright: 2003-2009 Alexander Schmolck and Vivek Rathod
+:date: 2009-09-14
 
 
 .. contents::
@@ -28,6 +28,14 @@ like a normal python library.
 
 News
 ----
+
+**2009-09-14** 1.1-pre finally brings N-D array support, thanks to Vivek Rathod
+who joined the project! Also fixed a missing import for saveVarsInMat.
+
+Since a few people have run into problems that appear to relate to compiling
+Matlab® C-extensions in general and aren't mlabwrap-specific, I should probably
+stress that in case of any problems that look C-related, verifying whether
+engdemo.c works is a great litmus test (see Troubleshooting_ ).
 
 
 **2009-03-23** 1.0.1 is finally out. This is a minor release that fixes some
@@ -348,13 +356,14 @@ to use ``mlabwrap`` in any way ``matlab`` will have to be in your path anyway
 specifies how exactly Matlab® should be called).
 
 
-Can't open engine
-~~~~~~~~~~~~~~~~~
+"Can't open engine"
+~~~~~~~~~~~~~~~~~~~
 If you see something like ``mlabraw.error: Unable to start MATLAB(TM) engine``
 then you may be using an incompatible C++ compiler (or version), or if you're
 using unix you might not have ``csh`` installed under ``/bin/csh``, see below.
 Try if you can get the ``engdemo.c`` file to work that comes with your Matlab
-installation -- copy it to a directory where you have write access and do
+installation -- `engdemo`_ provides detailed instructions, but in a nutshell:
+ copy it to a directory where you have write access and do
 (assuming Matlab is installed in /opt/MatlabR14 and you're running unix,
 otherwise modify as requird)::
 
@@ -385,6 +394,13 @@ systems). He also pointed out this helpful `engdemo troubleshooting`_ page at
 the Mathworks(tm) site.
 
 
+"\`GLIBCXX_3.4.9' not found" on importing mlab (or similar)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As above, first try to see if you can get engdemo.c to work, because
+as long as even the examples that come with Matlab® don't compile,
+chances of mlabwrap compiling are rather slim. On the plus-side
+if the problem isn't mlabwrap specific, The Mathworks® and/or
+Matlab®-specific support forums should be able to help.
 
 Old Matlab version
 ~~~~~~~~~~~~~~~~~~
@@ -504,3 +520,4 @@ Matlab is a registered trademark of `The Mathworks`_.
    :alt: sourceforge-logo
    :target: http://sourceforge.net/projects/mlabwrap/
 
+.. _engdemo:: http://www.mathworks.com/support/solutions/en/data/1-1BSZR/?solution=1-1BSZR

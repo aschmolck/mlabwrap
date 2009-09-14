@@ -4,7 +4,6 @@
 ##
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
 ## o created: 2002-05-29 21:51:59+00:40
-## o last modified: $Date$
 ## o version: 0.5
 ## o keywords: matlab wrapper
 ## o license: MIT
@@ -154,8 +153,7 @@ Tested under matlab v6r12 and python2.2.1
 See the docu of `MlabWrap` and `Matlab(tm)abObjectProxy` for more information.
 """
 __docformat__ = "restructuredtext en"
-__revision__ = "$Revision$"
-__version__ = "0.9b1"
+__version__ = '1.1-pre'
 
 # perform black magic
 

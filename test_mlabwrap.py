@@ -2,9 +2,8 @@
 ################### test_mlabwrap: unittests for mlabwrap ####################
 ##############################################################################
 ##
-## o author: Alexander Schmolck (a.schmolck@gmx.net)
+## o authors: Alexander Schmolck, Vivek Rathod
 ## o created: 2003-07-00 00:00:00+00:00
-## o last modified: $Date$
 
 import sys, os, re
 import gc
@@ -65,6 +64,7 @@ class NumericTestCase(TestCase):
        """
     maxReprLength          = 30   #
     reprNewlineReplacement = "\\n"
+
     def _reallyEqual(self, first, second, testShape=True):
         #FIXME should this check for identical argument type, too?
         res = first == second
@@ -114,6 +114,18 @@ class NumericTestCase(TestCase):
     failIfAlmostEqual =  assertNotAlmostEquals = assertNotAlmostEqual
 
 
+def _canonicalMShape(a):
+    """Matlab arrays are rank-less (rank is specified by indexing), so all
+    arrays w/ trailing 1s in their shape are equivalent. This returns the
+    canonical form for comparison purposes: no trailing 1s in the shape,
+    unless the array would otherwise become a scalar or vector.
+    """
+    s = list(a.shape)
+    if len(s) < 2: s.append(1)
+    while s[2:] and s[-1] == 1: s.pop()
+    return a.reshape(s)
+
+
 class mlabwrapTC(NumericTestCase):
 ##     def assertEqual(self, first, second):
 ##         res = first == second
@@ -126,77 +138,43 @@ class mlabwrapTC(NumericTestCase):
         """Test basic behavior."""
         array = numpy.array
         from random import randrange
-        "This largely tests basic mlabraw conversion functionality"
-        for i in range(30):
-            if i % 4: # every 4th is a flat vector
-                a = rand(randrange(1,20))
-            else:
-                #FIXME add other ranks and shapes
-##                 if i % 3:
-##                     a = rand(randrange())
-                a = rand(randrange(1,3),randrange(1,3))
-            a1 = a.copy()
-            mlab._set('a', a)
-            if numpy.rank(a) == 2:
-                self.assertEqual(a, mlab._get('a'))
-            else:
-                self.assertEqual(a, numpy.ravel(mlab._get('a')))
-            self.assertEqual(a, a1)
-            # make sure strides also work OK!
-            mlab._set('a', a[::-2])
-            if numpy.rank(a) == 2:
-                self.assertEqual(a[::-2], mlab._get('a'))
-            else:
-                self.assertEqual(a[::-2], numpy.ravel(mlab._get('a')))
-            self.assertEqual(a, a1)
-            if numpy.rank(a) == 2:
-                mlab._set('a', a[0:-3:3,::-1])
-                self.assertEqual(a[0:-3:3,::-1], mlab._get('a'))
-                # test there are no aliasing problems
-                newA = mlab._get('a')
-                newA -= 1e4
+        for isComplex in [False, True]:
+            for i in range(30):
+                #flat vector
+                if i % 3:
+                    nDims = 1
+                    dims = randrange(1, 20)
+                #2 - 6 dimensions.
+                else:
+                    nDims = randrange(2, 7)
+                    dims  = [randrange(1, 7) for j in range(nDims)]
+               
+                a = numpy.random.random(dims)
+                if isComplex: a = a + 1j*numpy.random.random(dims)
+                a1 = a.copy()
+                mlab._set('a', a)
+                #### test simple get ####
+                self.assertEqual(_canonicalMShape(a), mlab._get('a'))
                 self.assertEqual(a,a1)
-                if len(newA):
-                    self.assertNotEqual(newA, mlab._get('a'))
-            self.assertEqual(a, a1)
-            mlab.clear('a')
-        # Complex
-        for i in range(30):
-            if i % 4: # every 4th is a flat vector
-                a = rand(randrange(1,20));
-                a = a + 1j*rand(*a.shape)
-            else:
-                #FIXME add other ranks and shapes
-##                 if i % 3:
-##                     a = rand(randrange())
-                a = rand(randrange(1,3),randrange(1,3)) + 1j*rand(randrange(1,3),randrange(1,3))
-            a1 = a.copy()
-            mlab._set('a', a)
-            if numpy.rank(a) == 2:
-                self.assertEqual(a, mlab._get('a'))
-            else:
-                self.assertEqual(a, numpy.ravel(mlab._get('a')))
-            self.assertEqual(a, a1)
-            # make sure strides also work OK!
-            mlab._set('a', a[::-2])
-            if numpy.rank(a) == 2:
-                self.assertEqual(a[::-2], mlab._get('a'))
-            else:
-                self.assertEqual(a[::-2], numpy.ravel(mlab._get('a')))
-            self.assertEqual(a, a1)
-            if numpy.rank(a) == 2:
-                mlab._set('a', a[0:-3:3,::-1])
-                self.assertEqual(a[0:-3:3,::-1], mlab._get('a').astype('D')) # XXX
-                # test there are no aliasing problems
-                newA = mlab._get('a')
-                newA -= 1e4
+
+                ### test sliced arrays (stride handling test) ###
+                b = a1.copy()
+                for i in range(nDims):
+                    z=0
+                    while not z: z = randrange(-3,4)
+                    b = b[::z]
+                mlab._set('b',b)
+                self.assertEqual(_canonicalMShape(b),mlab._get('b'))
+                self.assertEqual(a1,a)
+                ########## test for aliasing problems ##########
+                if nDims > 1:
+                    newA = mlab._get('a')
+                    newA -= 1e4
+                    if len(newA):
+                        self.assertNotEqual(newA, mlab._get('a'))
                 self.assertEqual(a,a1)
-                if len(newA):
-                    self.assertNotEqual(newA, mlab._get('a'))
-            self.assertEqual(a, a1)
-            mlab.clear('a')
-
-
+                mlab.clear('a')
+                mlab.clear('b')
         # the tricky diversity of empty arrays
         mlab._set('a', [[]])
         self.assertEqual(mlab._get('a'), numpy.zeros((1, 0), 'd'))
@@ -212,21 +190,14 @@ class mlabwrapTC(NumericTestCase):
         self.assertEqual(mlab._get('a'), array([       [-2.]]))
         mlab._set('a', array(-2))
         self.assertEqual(mlab._get('a'), array([       [-2.]]))
-        # complex 1D
-        mlab._set('a', [1+3j, -4+2j, 6-5j])
-        self.assertEqual(mlab._get('a'),array([[1.+3.j],[-4.+2.j],[6.-5.j]]))
-        # complex 2D
-        mlab._set('a', [[1+3j, -4+2j, 6+5j], [9+3j, 1, 3-2j]])
-        self.assertEqual(mlab._get('a'), array([[1.+3.j,-4.+2.j,6.+5.j]
-                                                ,[9.+3.j,1.+0.j,3.-2.j]]))
         mlab.clear('a')
         # try basic error handling
-        self.failUnlessRaises(TypeError, mlab._set, 'a', [[[1]]])
         self.failUnlessRaises(MlabError, mlab._get, 'dontexist')
         self.failUnlessRaises(MlabError,mlab.round)
         assert toscalar(mlab.round(1.6)) == 2.0
         self.assertEqual(mlab.max([20,10],nout=2), (numpy.array([[20]]), array([[1]])))
         self.assertEqual(mlab.max([20,10]), numpy.array([[20]]))
+
     def testDoc(self):
         """Test that docstring extraction works OK."""
         mlab.who.__doc__.index('WHO lists the variables in the current workspace')

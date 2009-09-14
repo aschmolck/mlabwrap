@@ -4,8 +4,7 @@
 ##############################################################################
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
 ## o created: 2003-08-07 17:15:22+00:40
-## o last modified: $Date$
-
+__version__ = '1.1-pre'
 ####################################################################
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
@@ -20,7 +19,7 @@ EXTRA_COMPILE_ARGS=None     # e.g: ['-G']
 # hopefully these 3 won't need modification
 MATLAB_LIBRARIES=None       # e.g: ['eng', 'mx', 'mat', 'mi', 'ut']
 USE_NUMERIC=None            # use obsolete Numeric instead of numpy?
-PYTHON_INCLUDE_DIR=None     # where to find numpy/*.h or Numeric/*.h
+PYTHON_INCLUDE_DIR=None     # where to find numpy/*.h
 
 SUPPORT_MODULES= ["awmstools"] # set to [] if already
                                # installed
@@ -170,7 +169,7 @@ if USE_NUMERIC:
     DEFINE_MACROS.append(('MLABRAW_USE_NUMERIC', 1))
 setup (# Distribution meta-data
        name = "mlabwrap",
-       version = "1.0.1",
+       version = __version__,
        description = "A high-level bridge to matlab",
        author = "Alexander Schmolck",
        author_email = "A.Schmolck@gmx.net",

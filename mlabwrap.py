@@ -4,7 +4,6 @@
 ##
 ## o author: Alexander Schmolck <a.schmolck@gmx.net>
 ## o created: 2002-05-29 21:51:59+00:40
-## o last modified: $Date$
 ## o version: see `__version__`
 ## o keywords: matlab wrapper
 ## o license: MIT
@@ -169,8 +168,7 @@ See the docu of ``MlabWrap`` and ``MatlabObjectProxy`` for more information.
 """
 
 __docformat__ = "restructuredtext en"
-__revision__ = "$Id$"
-__version__ = "1.0.1"
+__version__ = '1.1-pre'
 __author__   = "Alexander Schmolck <a.schmolck@gmx.net>"
 import warnings
 from pickle import PickleError

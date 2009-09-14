@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 2 -*-
   mlabraw -- A Python module that exposes the MATLAB(TM) engine
   interface and supports passing Numeric arrays back and forth. It is
   derived from Andrew Sterian's pymat.
@@ -37,6 +37,11 @@
 
   Revision History
   ================
+
+  mlabraw revision 1.1 -- 2009-09-14 Vikek Rathod & Alexander Schmolck
+  ----------------------------------------------------------------------------
+  - Vivek Rathod implemented n-d array support (this also marks the
+    definite end of all Numeric suppport).
 
   mlabraw revision 1.0.1 -- 2009-03-19 Alexander Schmolck (a.schmolck@gmx.net)
   ----------------------------------------------------------------------------
@@ -85,6 +90,8 @@
 
   Copyright & Disclaimer
   ======================
+  Copyright (c) 2002-2009 Alexander Schmolck and Vivek Rathod
+
   Copyright (c) 2002-2009 Alexander Schmolck <a.schmolck@gmx.net>
 
   Copyright (c) 1998,1999 Andrew Sterian. All Rights Reserved. mailto: steriana@gvsu.edu
@@ -111,6 +118,7 @@
 */
 #include <Python.h> // !!! must come before standard includes
 #include <stdarg.h>
+#include <cstdio>
 #define MLABRAW_VERSION "1.0.1"
 // We're not building a MEX file, we're building a standalone app.
 #undef MATLAB_MEX_FILE
@@ -125,19 +133,11 @@
 
 #endif
 
-
-#ifndef MLABRAW_USE_NUMERIC
 #include <numpy/arrayobject.h>
 # ifndef PyArray_SBYTE
 #  include <numpy/oldnumeric.h>
 #  include <numpy/old_defines.h>
 # endif
-#else
-#include <Numeric/arrayobject.h>
-#define npy_intp int
-#define PyArray_SimpleNew PyArray_FromDims
-#define NPY_MAXDIMS 32
-#endif
 
 #include <engine.h>
 #include <matrix.h>
@@ -181,9 +181,6 @@ static inline bool my_snprintf(char *dst, size_t size, const char *fmt, ...)
 	return n >- 1 && static_cast<size_t>(n) < size;
 }
 
-
-//////////////////////////////////////////////////////////////////////////////
-
 // FIXME: add string array support
 static PyStringObject *mx2char(const mxArray *pArray)
 {
@@ -210,59 +207,61 @@ static PyStringObject *mx2char(const mxArray *pArray)
 	error_return: return NULL;
 }
 
+
 static PyArrayObject *mx2numeric(const mxArray *pArray)
 {
+  //current function returns PyArrayObject in c order currently
   mwSize nd;
   npy_intp  pydims[NPY_MAXDIMS];
-  PyArrayObject *lRetval = NULL;
-  mwSize lRows, lCols;
+  PyArrayObject *lRetval = NULL,*t=NULL;
   const double *lPR;
   const double *lPI;
-
   pyassert(PyArray_API,
            "Unable to perform this function without NumPy installed");
 
   nd = mxGetNumberOfDimensions(pArray);
-  if (nd > 2) {
-    PyErr_SetString(PyExc_TypeError,
-                   "Only 1-D and 2-D arrays are currently supported");
-    return NULL;
-  }
-
-  { const mwSize *dims;
+  {
+    const mwSize *dims;
     dims = mxGetDimensions(pArray);
-    for (int i=0; i<static_cast<int>(nd); i++)  pydims[i] = static_cast<npy_intp>(dims[i]); }
-  lRetval = (PyArrayObject *)
-    PyArray_SimpleNew(static_cast<npy_intp>(nd), pydims,
-                      mxIsComplex(pArray) ?
-                      PyArray_CDOUBLE : PyArray_DOUBLE);
-  if (lRetval == NULL) return NULL;
-
-  lRows = mxGetM(pArray);
-  lCols = mxGetN(pArray);
-  lPR = mxGetPr(pArray);
-  if (mxIsComplex(pArray)) {
-    lPI = mxGetPi(pArray);
-
-    for (mwIndex lCol = 0; lCol < lCols; lCol++) {
-      double *lDst = (double *)(lRetval->data) + 2*lCol;
-      for (mwIndex lRow = 0; lRow < lRows; lRow++, lDst += 2*lCols) {
-        lDst[0] = *lPR++;
-        lDst[1] = *lPI++;
-      }
-    }
-  } else {
-    for (mwIndex lCol = 0; lCol < lCols; lCol++) {
-      double *lDst = (double *)(lRetval->data) + lCol;
-      for (mwIndex lRow = 0; lRow < lRows; lRow++, lDst += lCols) {
-        *lDst = *lPR++;
-      }
+    for (mwSize i=0; i != nd; i++){
+        pydims[i] = static_cast<npy_intp>(dims[i]);
     }
   }
-
+ //this function creates a fortran array
+  t = (PyArrayObject *)
+    PyArray_New(&PyArray_Type,static_cast<npy_intp>(nd), pydims,
+                mxIsComplex(pArray) ? PyArray_CDOUBLE : PyArray_DOUBLE,
+                NULL, // strides
+                NULL, // data
+                0,    //(ignored itemsize),
+                NPY_F_CONTIGUOUS, 
+                NULL); //  obj
+  if (t == NULL) return NULL;
+  
+  lPR  = mxGetPr(pArray);
+  if (mxIsComplex(pArray)) {
+    double *lDst = (double *)PyArray_DATA(t);
+    // AWMS unsigned int almost certainly can overflow on some platforms!
+    npy_intp numberOfElements = PyArray_SIZE(t);
+    lPI = mxGetPi(pArray);
+    for (mwIndex i = 0; i != numberOfElements; i++) {
+      *lDst++ = *lPR++;
+      *lDst++ = *lPI++;
+    }
+  }
+  else {
+    double *lDst = (double *)PyArray_DATA(t);
+    npy_intp numberOfElements = PyArray_SIZE(t);
+    for (mwIndex i = 0; i != numberOfElements; i++) {
+      *lDst++ = *lPR++;
+    }
+  }
+  
+  lRetval = (PyArrayObject *)PyArray_FromArray(t,NULL,NPY_C_CONTIGUOUS|NPY_ALIGNED|NPY_WRITEABLE);
+  Py_DECREF(t);
+  
   return lRetval;
-
- error_return:
+  error_return:
   return NULL;
 }
 
@@ -278,22 +277,17 @@ static inline void copyNumericVector2Mx(T *pSrc, npy_intp pRows, double *pDst, n
   }
   else {
     npy_intp lRowDelta = pStrides[0]/sizeof(T);
-    for (npy_intp lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
+    for (npy_intp lRow=0; lRow != pRows; lRow++, pSrc += lRowDelta) {
       *pDst++ = *pSrc;
     }
   }
 }
 
 template <class T>
-static inline void copyNumeric2Mx(T *pSrc, npy_intp pRows, npy_intp pCols, double *pDst, npy_intp *pStrides)
+static inline void copyNumeric2Mx(T *p,int size,double * pRData)
 {
-  npy_intp lRowDelta = pStrides[0]/sizeof(T);
-  npy_intp lColDelta = pStrides[1]/sizeof(T);
-  for (npy_intp lCol=0; lCol < pCols; lCol++) {
-    T *lSrc = pSrc + lCol*lColDelta;
-    for (npy_intp lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
-      *pDst++ = *lSrc;
-    }
+  while(size --){
+    *pRData++ = *p++;
   }
 }
 template <class T>
@@ -301,37 +295,32 @@ static inline void copyCplxNumericVector2Mx(T *pSrc, npy_intp pRows, double *pRD
                               double *pIData, npy_intp *pStrides)
 {
   npy_intp lRowDelta = pStrides[0]/sizeof(T);
-  for (npy_intp lRow=0; lRow < pRows; lRow++, pSrc += lRowDelta) {
+  for (npy_intp lRow=0; lRow != pRows; lRow++, pSrc += lRowDelta) {
     *pRData++ = pSrc[0];
     *pIData++ = pSrc[1];
   }
 }
 
 template <class T>
-static inline void copyCplxNumeric2Mx(T *pSrc, npy_intp pRows, npy_intp pCols, double *pRData,
-                        double *pIData, npy_intp *pStrides)
+static inline void copyCplxNumeric2Mx(T *p,int size,double *pRData,double *pIData)
 {
-  npy_intp lRowDelta = pStrides[0]/sizeof(T);
-  npy_intp lColDelta = pStrides[1]/sizeof(T);
-
-
-  for (npy_intp lCol=0; lCol < pCols; lCol++) {
-    T *lSrc = pSrc + lCol*lColDelta;
-    for (npy_intp lRow=0; lRow < pRows; lRow++, lSrc += lRowDelta) {
-      *pRData++ = lSrc[0];
-      *pIData++ = lSrc[1];
+    while(size--){
+      *pRData++ = *p++;
+      *pIData++ = *p++;
     }
-  }
 }
 
 static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 {
-  npy_intp lRows, lCols;
+  npy_intp lRows=0, lCols=0;
   bool lIsComplex;
   bool lIsNotAMatrix = false;
   double *lR = NULL;
   double *lI = NULL;
   mxArray *lRetval = NULL;
+  mwSize dims[NPY_MAXDIMS];
+  mwSize nDims = pSrc->nd;
+  const PyArrayObject *ap=NULL;
 
   switch (pSrc->nd) {
   case 0:                       // XXX the evil 0D
@@ -344,128 +333,134 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
     lCols = min(1, lRows); // for array([]): to avoid zeros((0,1)) !
     lIsNotAMatrix = true;
     break;
-  case 2:
-    lCols = pSrc->dimensions[1];
-    lRows = pSrc->dimensions[0];
-    break;
   default:
-    char strbuff[1024];
-    my_snprintf(strbuff, 1024,
-            "Only arrays with up to 2D are currently supported (not %dD)",
-            pSrc->nd);
-    PyErr_SetString(PyExc_TypeError, strbuff);
-    goto error_return;
+      for (mwSize i = 0;i != nDims; i++) {
+        dims[i]=(mwSize)pSrc->dimensions[i];
+      }
+    break;
   }
-
   switch (pSrc->descr->type_num) {
   case PyArray_OBJECT:
     PyErr_SetString(PyExc_TypeError, "Non-numeric array types not supported");
     return NULL;
-
   case PyArray_CFLOAT:
   case PyArray_CDOUBLE:
     lIsComplex = true;
     break;
-
   default:
     lIsComplex = false;
   }
 
-  lRetval = mxCreateDoubleMatrix(lRows, lCols, lIsComplex ? mxCOMPLEX : mxREAL);
+  // converts to fortran order if not already
+  if(!PyArray_ISFORTRAN(pSrc)){ 
+    ap = (const PyArrayObject *)PyArray_FromArray((PyArrayObject*)pSrc,NULL,NPY_ALIGNED|NPY_F_CONTIGUOUS);
+  }
+  else{
+    ap = pSrc;
+  }
+
+  if(lIsNotAMatrix)
+    lRetval = mxCreateDoubleMatrix(lRows, lCols, lIsComplex ? mxCOMPLEX : mxREAL);
+  else
+    lRetval = mxCreateNumericArray(nDims,dims,mxDOUBLE_CLASS,lIsComplex ? mxCOMPLEX : mxREAL);
 
   if (lRetval == NULL) return NULL;
-
   lR = mxGetPr(lRetval);
   lI = mxGetPi(lRetval);
   if (lIsNotAMatrix) {
-    switch (pSrc->descr->type_num) {
+    void *p = PyArray_DATA(ap);
+    switch (ap->descr->type_num) {
     case PyArray_CHAR:
-      copyNumericVector2Mx((char *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((char *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_UBYTE:
-      copyNumericVector2Mx((unsigned char *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((unsigned char *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_SBYTE:
-      copyNumericVector2Mx((signed char *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((signed char *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_SHORT:
-      copyNumericVector2Mx((short *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((short *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_INT:
-      copyNumericVector2Mx((int *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((int *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_LONG:
-      copyNumericVector2Mx((long *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((long *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_FLOAT:
-      copyNumericVector2Mx((float *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((float *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_DOUBLE:
-      copyNumericVector2Mx((double *)(pSrc->data), lRows, lR, pSrc->strides);
+      copyNumericVector2Mx((double *)(p), lRows, lR, pSrc->strides);
       break;
 
     case PyArray_CFLOAT:
-      copyCplxNumericVector2Mx((float *)(pSrc->data), lRows, lR, lI, pSrc->strides);
+      copyCplxNumericVector2Mx((float *)(p), lRows, lR, lI, pSrc->strides);
       break;
 
     case PyArray_CDOUBLE:
-      copyCplxNumericVector2Mx((double *)(pSrc->data), lRows, lR, lI, pSrc->strides);
+      copyCplxNumericVector2Mx((double *)(p), lRows, lR, lI, pSrc->strides);
       break;
     }
   } else {
+    void *p = PyArray_DATA(ap);
+    npy_intp size = PyArray_SIZE(pSrc);
+
     switch (pSrc->descr->type_num) {
     case PyArray_CHAR:
-      copyNumeric2Mx((char *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((char *)p,size,lR);
       break;
 
     case PyArray_UBYTE:
-      copyNumeric2Mx((unsigned char *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((unsigned char *)p,size,lR);
       break;
 
     case PyArray_SBYTE:
-      copyNumeric2Mx((signed char *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((signed char *)p,size,lR);
       break;
 
     case PyArray_SHORT:
-      copyNumeric2Mx((short *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((short *)p,size,lR);
       break;
 
     case PyArray_INT:
-      copyNumeric2Mx((int *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((int *)p,size,lR);
       break;
 
     case PyArray_LONG:
-      copyNumeric2Mx((long *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((long *)p,size,lR);
       break;
 
     case PyArray_FLOAT:
-      copyNumeric2Mx((float *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((float *)p,size,lR);
       break;
 
     case PyArray_DOUBLE:
-      copyNumeric2Mx((double *)(pSrc->data), lRows, lCols, lR, pSrc->strides);
+      copyNumeric2Mx((double *)p,size,lR);
       break;
 
     case PyArray_CFLOAT:
-      copyCplxNumeric2Mx((float *)(pSrc->data), lRows, lCols, lR, lI, pSrc->strides);
+      copyCplxNumeric2Mx((float *)p,size,lR,lI);
       break;
 
     case PyArray_CDOUBLE:
-      copyCplxNumeric2Mx((double *)(pSrc->data), lRows, lCols, lR, lI, pSrc->strides);
+      copyCplxNumeric2Mx((double *)p,size,lR,lI);
       break;
     }
   }
+  
+  if(!PyArray_ISFORTRAN(pSrc)){
+    Py_DECREF(ap);
+  }
   return lRetval;
-
- error_return:
-  return NULL;
 }
 
 //AWMS: FIXME think about non-numeric sequences and whether we should return a cell array instead
@@ -485,7 +480,7 @@ static mxArray *makeMxFromSeq(const PyObject *pSrc)
   lSize = PyArray_SIZE(lArray);
   // Get at first imaginary element
   const double *lPtr = (const double *)(lArray->data) + 1;
-  for (i=0; i < lSize; i++, lPtr += 2) {
+  for (i=0; i != lSize; i++, lPtr += 2) {
     if (*lPtr != 0.0) break;
   }
   if (i >= lSize) {
@@ -505,7 +500,6 @@ static mxArray *numeric2mx(PyObject *pSrc)
   mxArray *lDst = NULL;
 
   pyassert(PyArray_API, "Unable to perform this function without NumPy installed");
-
   if (PyArray_Check(pSrc)) {
     lDst = makeMxFromNumeric((const PyArrayObject *)pSrc);
   } else if (PySequence_Check(pSrc)) {
@@ -585,11 +579,8 @@ PyObject * mlabraw_open(PyObject *, PyObject *args)
     PyErr_SetString(mlabraw_error, "Unable to start MATLAB(TM) engine");
     return NULL;
   }
-  return PyCObject_FromVoidPtr(ep, NULL); //XXX Check that's right
+  return PyCObject_FromVoidPtr(ep, NULL);
 }
-
-
-
 
 
 static char close_doc[] =
@@ -600,6 +591,7 @@ static char close_doc[] =
 "This function closes the MATLAB(TM) session whose handle was returned\n"
 "by a previous call to open().\n"
 ;
+
 PyObject * mlabraw_close(PyObject *, PyObject *args)
 {
   PyObject *lHandle;
@@ -614,6 +606,7 @@ PyObject * mlabraw_close(PyObject *, PyObject *args)
   Py_INCREF(Py_None);
   return Py_None;
 }
+
 static char eval_doc[] =
 "eval(handle, string) -> str\n"
 "\n"
@@ -634,7 +627,7 @@ PyObject * mlabraw_eval(PyObject *, PyObject *args)
   // being documented anywhere; I don't want to make it too small since the
   // high overhead of engine calls means that it can be potentially useful to
   // eval large chunks.
-	const int  BUFSIZE=4096;
+  const int  BUFSIZE=4096;
   char* fmt = "try, %s; MLABRAW_ERROR_=0; catch, MLABRAW_ERROR_=1; end;";
   char buffer[BUFSIZE];
   char cmd[BUFSIZE];
@@ -809,7 +802,6 @@ PyObject * mlabraw_put(PyObject *, PyObject *args)
     PyErr_SetString(PyExc_TypeError, "Invalid object passed as mlabraw session handle");
     return NULL;
   }
-
   Py_INCREF(lSource);
 
   if (PyString_Check(lSource)) {
