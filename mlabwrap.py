@@ -189,7 +189,7 @@ except ImportError:
 from tempfile import gettempdir
 import mlabraw
 
-from awmstools import update, gensym, slurp, spitOut, isString, escape, strToTempfile
+from awmstools import update, gensym, slurp, spitOut, isString, escape, strToTempfile, __saveVarsHelper
 
 #XXX: nested access
 def _flush_write_stdout(s):
@@ -646,7 +646,7 @@ def saveVarsInMat(filename, varNamesStr, outOf=None, **opts):
        .mat file. See `awmstools.saveVars`.
     """
     from mlabwrap import mlab
-    filename, varnames, outOf = awmstools.__saveVarsHelper(
+    filename, varnames, outOf = __saveVarsHelper(
         filename, varNamesStr, outOf, '.mat', **opts)
     try:
         for varname in varnames:
