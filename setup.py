@@ -4,7 +4,7 @@
 ##############################################################################
 ## o author: Alexander Schmolck (a.schmolck@gmx.net)
 ## o created: 2003-08-07 17:15:22+00:40
-__version__ = '1.1-pre'
+__version__ = '1.1'
 ####################################################################
 ##### VARIABLES YOU MIGHT HAVE TO CHANGE FOR YOUR INSTALLATION #####
 ##### (if setup.py fails to guess the right values for them)   #####
