@@ -1,0 +1,542 @@
+p.caption{ font-size: .8em;
+           border-left: 50em;
+           color: #663300;
+           max-width:20em }
+.literal-block {
+    /*border: 0.1em solid #663300;*/
+    padding: 1em;
+    background: #ebebbb; /*#daecff;*/
+    font-size: 1em;
+}
+.doctest-block {
+    /*border: 0.1em solid #663300;*/
+    color: #663300;
+    font-weight: bold;
+}
+
+p.admonition-title{ color: #663300;
+                    font-size: 1.33em;
+                    font-variant: small-caps;
+                    font-weight: bold
+                  }
+div.note{
+    border: 0.1em dotted #036;
+    margin-left: 0.2em;
+    padding:0.5em;
+    /*padding: 20em*/
+    font-size: .8em;
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1.33em;
+}
+
+
+body	{
+    font-size:	0.7em;
+    font-weight:	normal;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+    font-family:	Verdana, Myriad Web, Syntax, sans-serif;
+    font-size-adjust:	.58;
+
+}
+
+table, tbody, tr, td	{
+    font-size:	1em;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+    font-family:	Verdana, 'Myriad Web', Syntax, sans-serif;
+    font-size-adjust:	.58;
+}
+
+h1	{
+    font-family:	Tahoma, Verdana, 'Myriad Web', Syntax, sans-serif;
+    font-size-adjust:	.53;
+    font-size:	2em;
+    /*font-weight:	500;*/
+    font-style:	normal;
+    text-decoration: none;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+
+}
+
+h2	{
+    font-family:	Tahoma, Verdana, 'Myriad Web', Syntax, sans-serif;
+    font-size-adjust:	.53;
+    font-size:	1.75em;
+    font-weight:	300;
+    font-style:	normal;
+    text-decoration:	none;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+}
+
+h3	{
+    font-family:	Tahoma, Verdana, 'Myriad Web', Syntax, sans-serif;
+    font-size-adjust:	.53;
+    font-size:	1.58em;
+    font-weight:	600;
+    font-style:	normal;
+    text-decoration:	underline;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+}
+
+h4	{
+    font-family:	Tahoma, Verdana, 'Myriad Web', Syntax, sans-serif;
+    font-size-adjust:	.53;
+    font-size:	1.33em;
+    font-weight:	600;
+    font-style:	normal;
+    text-decoration:	none;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+}
+
+
+
+th	{
+    vertical-align:	baseline;
+    font-size:	0.9em;
+    font-weight:	bold;
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+    font-family:	Verdana, 'Myriad Web', Syntax, sans-serif;
+    font-size-adjust:	.53;
+}
+
+
+a, address, blockquote, body, cite, code, dfn,
+div, dl, em, form, h1, h2, h3, h4, iframe, img, kbd,
+li, object, ol, p, q, samp, small, span, strong, sub, sup, ul, var,
+applet, big, center, dir, font, menu, pre,
+abbr, acronym, bdo, button, fieldset, ins, label	{
+    word-spacing:	normal;
+    letter-spacing:	normal;
+    text-transform:	none;
+    text-decoration:	none;
+    border-color:	#663300;
+    border-style:	none;
+}
+
+body	{
+    color:	black;
+    background:	;
+}
+
+em	{
+    font-style:	italic;
+    font-weight:	normal;
+    color:	black;
+    background:	white;
+}
+
+strong	{
+    font-style:	normal;
+    background:	white;
+    font-weight:	bold;
+    color:	black;
+}
+
+em strong, strong em	{
+    text-transform:	uppercase;
+    font-style:	normal;
+    font-weight:	bolder;
+    background:	white;
+    color:	black;
+}
+
+b	{
+    font-weight:	bold;
+}
+
+i	{
+    font-style:	italic;
+}
+
+.warning	{
+    text-transform:	none;
+    font-style:	normal;
+    font-weight:	bolder;
+    background:	yellow;
+    color:	black;
+}
+
+ins	{
+    text-decoration:	none;
+    background:	yellow;
+}
+
+var, cite, dfn, .note	{
+    font-style:	italic;
+}
+
+address	{
+    font-style:	normal;
+    letter-spacing:	.1em;
+}
+
+acronym	{
+    font-variant:	small-caps;
+    letter-spacing:	0.1em;
+}
+
+h1, h2, h3, h4	{
+    color:	#663300;
+    background: ;
+}
+
+th {color: #ffffff;
+   }
+
+
+#colophon	{
+    display:	none;
+}
+
+col, colgroup, table, tbody, tr	{
+    color:	black;
+    text-decoration:	none;
+    border-color:	black;
+    border-style:	none;
+    background:	;
+}
+
+td {
+    font-size: 0.85em;
+    color: #ffffff;
+}
+
+a:link	{
+    text-decoration:	none;
+    font-weight:	bold;
+    color:	#663300;
+    background:	;
+}
+
+a:visited	{
+    text-decoration:	none;
+    font-weight:	bold;
+    color:	#CC6600;
+    background:	;
+}
+
+a:active	{
+    text-decoration:	none;
+    font-weight:	bold;
+    color:	#ff6600;
+    background:	#FF0;
+}
+
+a:hover	{
+    text-decoration:	none;
+    color:	#ff6600;
+    background:	white;
+}
+
+a.offsite	{
+    text-decoration:	none;
+    font-weight:	normal;
+    color:	#C30;
+    background:	white;
+}
+
+a, address, blockquote, cite, code, dfn,
+div, dl, em, form, h1, h2, h3, h4, iframe, img, kbd,
+li, object, ol, p, q, samp, small, span, strong, sub, sup, ul, var,
+applet, b, big, center, dir, font, i, menu, pre, s, strike, tt,
+u, abbr, acronym, bdo, button, fieldset, ins, label	{
+    margin-top:	0;
+    margin-bottom:	0;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+/*vertical-align:	baseline;*/
+}
+
+body	{
+    line-height:	1.58em;
+}
+
+div > p:first-child, body > p:first-child, td > p:first-child	{
+    margin-top:	.75em;
+    margin-bottom:	.75em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+h1 + p, h2 + p, h3 + p, h4 + p, div + p, p.initial	{
+    margin-top:	.75em;
+    margin-bottom:	.75em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+h1, h2, h3, h4	{
+    line-height:	1.33em;
+}
+
+h1	{
+    margin-top:	1em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom: solid 0.18em #998855;
+}
+
+h2	{
+    margin-top:	.75em;
+    margin-bottom:	.33em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	solid 0.15em #998855;
+}
+
+h3	{
+    margin-top:	.75em;
+    margin-bottom:	.33em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+    text-decoration: none;
+}
+
+h4	{
+    margin-top:	.75em;
+    margin-bottom:	.33em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+p	{
+    margin-top:	.75em;
+    margin-bottom:	.75em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+blockquote, fieldset, form, ul, ol, dl, dir, menu	{
+    margin-top:	.75em;
+    margin-bottom:	.75em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+ul ul, ol ol, li address, li dl, li ol, li p, li ul, li dir, li menu, li pre, li h1, li h2, li h3, li h4	{
+    margin-top:	0;
+    margin-bottom:	0;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+
+address	{
+    margin-top:	1.58em;
+    margin-bottom:	1.58em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+pre	{
+    margin-top:	.75em;
+    margin-bottom:	.75em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+    line-height:	1.25em;
+}
+
+
+div, center	{
+    margin-top: 0;
+    background-color: #ffffff;
+    width: 67em;
+    padding-bottom: 1em;
+}
+
+.subhead	{
+    margin-top:	.75em;
+    margin-bottom:	.75em;
+    padding-top:	0;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+}
+
+.stb	{
+    margin-top:	2.17em;
+    margin-bottom:	.75em;
+    padding-top:	2.17em;
+    padding-bottom:	0;
+    border-top:	0;
+    border-bottom:	0;
+    border-style:	solid
+}
+
+.mtb	{
+    margin-top:	3.08em;
+    margin-bottom:	.75em;
+    padding-top:	3.08em;
+    padding-bottom:	0;
+    border-top:	.1em;
+    border-bottom:	0;
+    border-style:	solid
+}
+
+.ltb	{
+    margin-top:	4.34em;
+    margin-bottom:	.75em;
+    padding-top:	4.34em;
+    padding-bottom:	0;
+    border-top:	.25em;
+    border-bottom:	0;
+    border-style:	solid
+}
+
+
+
+td, th	{
+    line-height:	1.33em;
+}
+
+h1.title{background-color: #ffffff;
+	 color: #663300;
+	 margin-top: -0.5em;
+	 padding-top: 3em;
+	 padding-bottom: 1em;
+	 padding-left:0;
+	 text-decoration: none;
+	}
+
+table.docinfo{background-color: #998855;
+	      width: 72.4em;
+	      margin-bottom: 2em;
+	      margin-left: -2.7em;
+	      padding-left: 3em;
+	      margin-top:  -1em;
+	      padding-top: 1em;
+	      padding-bottom:1em;
+	     }
+
+blockquote	{
+    margin-left:	1.58em;
+    //	margin-left:	5em;
+    margin-right:	0;
+    padding-left:	0;
+    padding-right:	0;
+    border-left:	0;
+    border-right:	0;
+    font-size:      0.9em;
+    font-style:     italic;
+    width:          80%;
+    //        align:          right;
+}
+
+.attribution {
+    font-style:    normal;
+    padding-top:   0;
+}
+
+li	{
+    margin-left:	3.16em;
+    margin-right:	0;
+    padding-left:	0;
+    padding-right:	0;
+    border-left:	0;
+    border-right:	0;
+}
+
+
+ul ul, ol ol, li address, li dl, li ol, li p, li ul, li dir, li menu, li pre, li h1, li h2, li h3, li h4	{
+    margin-left:	0;
+    margin-right:	0;
+    padding-left:	0;
+    padding-right:	0;
+    border-left:	0;
+    border-right:	0;
+}
+
+center	{
+    margin-left:	0;
+    margin-right:	0;
+    padding-left:	0;
+    padding-right:	0;
+    border-left:	0;
+    border-right:	0;
+    text-align:	left;
+}
+
+
+
+table	{
+    text-align:	left;
+}
+
+td	{
+    text-align:	left;
+}
+
+th	{
+    text-align:	left;
+    width:8em;
+}
+
+caption	{
+    text-align:	left;
+}
+
+body	{
+
+    background-color: #CCCC99;
+    margin-top:	0;
+    margin-left:	2em;
+
+    width: 72.4em;
+    border-style: dotted;
+    border-width: 0.1em;
+    border-color: #998855;
+}
+/* end body box */
+
+
+div.contents > ul.simple{border-style: dotted;
+                         border-width: 0.1em;
+                         border-color: #998855;
+                         width:        50em;
+                         padding: 1em;
+                         background-color: #f3f3d3;
+                        }
+div.document {background-color: #ffffff;
+	      padding: 2.7em;
+             }
+img.logo {position: absolute;
+	  top: 2em;
+	  left: 4.5em;
+         }
+

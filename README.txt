@@ -3,9 +3,9 @@
 =================
 mlabwrap v1.1-pre
 =================
-
 :copyright: 2003-2009 Alexander Schmolck and Vivek Rathod
-:date: 2009-09-14
+:date: 2009-10-26
+
 
 
 .. contents::
@@ -28,9 +28,14 @@ like a normal python library.
 
 News
 ----
+**2009-10-26** 1.1 fixes an incorrect declaration in ``mlabraw.cpp``
+that caused compilation problems for some users and incorporates a
+``setup.py`` fix for windows suggested by Alan Brooks. More significantly
+there is a new spiffy logo!
 
-**2009-09-14** 1.1-pre finally brings N-D array support, thanks to Vivek Rathod
-who joined the project! Also fixed a missing import for saveVarsInMat.
+**2009-09-14** 1.1-pre finally brings N-D array support, thanks to Vivek
+Rathod who joined the project! Also fixed a missing import for saveVarsInMat
+(thanks to Nicolas Pinto).
 
 Since a few people have run into problems that appear to relate to compiling
 Matlab® C-extensions in general and aren't mlabwrap-specific, I should probably
@@ -59,7 +64,7 @@ to change.)
   error-messages etc.) and some small documentation improvements and quite a
   few code clean-ups.
 
-Many thanks to Iain Murray at Toronto and Nicolas Pinto at MIT and for letting
+Many thanks to Iain Murray at Toronto and Nicolas Pinto at MIT for letting
 themselves be roped into helping me test my stupidly broken release
 candidates.
 
@@ -363,7 +368,7 @@ then you may be using an incompatible C++ compiler (or version), or if you're
 using unix you might not have ``csh`` installed under ``/bin/csh``, see below.
 Try if you can get the ``engdemo.c`` file to work that comes with your Matlab
 installation -- `engdemo`_ provides detailed instructions, but in a nutshell:
- copy it to a directory where you have write access and do
+copy it to a directory where you have write access and do
 (assuming Matlab is installed in /opt/MatlabR14 and you're running unix,
 otherwise modify as requird)::
 
@@ -469,7 +474,12 @@ be feasible). Whilst there is no general workaround, in some cases you can
 just create an equivalent matlab function on the fly, e.g. do something like
 this: ``mlab.fzero(mlab.eval('@(x) x^2-2', 0))``.
 
+Directly manipulating variables in Matlab® space
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+In certain (rare!) certain cases it might be necessary to directly access or
+set a global variable in matlab. In these cases you can use ``mlab._get('SOME_VAR')``
+and ``mlab._set('SOME_VAR', somevalue)``.
 
 
 Support and Feedback
@@ -520,4 +530,8 @@ Matlab is a registered trademark of `The Mathworks`_.
    :alt: sourceforge-logo
    :target: http://sourceforge.net/projects/mlabwrap/
 
-.. _engdemo:: http://www.mathworks.com/support/solutions/en/data/1-1BSZR/?solution=1-1BSZR
+.. _engdemo:
+   http://www.mathworks.com/support/solutions/en/data/1-1BSZR/?solution=1-1BSZR
+
+.. image:: mlabwrap-logo.png
+   :class: logo
