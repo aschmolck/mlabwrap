@@ -38,7 +38,7 @@
   Revision History
   ================
 
-  mlabraw revision 1.1 -- 2009-09-14 Vikek Rathod & Alexander Schmolck
+  mlabraw revision 1.1 -- 2009-09-14 Vivek Rathod & Alexander Schmolck
   ----------------------------------------------------------------------------
   - Vivek Rathod implemented n-d array support (this also marks the
     definite end of all Numeric suppport).
@@ -353,7 +353,7 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
 
   // converts to fortran order if not already
   if(!PyArray_ISFORTRAN(pSrc)){ 
-    ap = (const PyArrayObject *)PyArray_FromArray((PyArrayObject*)pSrc,NULL,NPY_ALIGNED|NPY_F_CONTIGUOUS);
+    ap = (PyArrayObject * const)PyArray_FromArray((PyArrayObject*)pSrc,NULL,NPY_ALIGNED|NPY_F_CONTIGUOUS);
   }
   else{
     ap = pSrc;
@@ -457,8 +457,8 @@ static mxArray *makeMxFromNumeric(const PyArrayObject *pSrc)
     }
   }
   
-  if(!PyArray_ISFORTRAN(pSrc)){
-    Py_DECREF(ap);
+  if(ap != pSrc){
+    Py_DECREF(const_cast<PyArrayObject *>(ap));
   }
   return lRetval;
 }
