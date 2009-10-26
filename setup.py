@@ -77,13 +77,15 @@ if PYTHON_INCLUDE_DIR is None and not USE_NUMERIC:
         except ImportError:
             print >> sys.stderr, "CANNOT FIND EITHER NUMPY *OR* NUMERIC"
 
-def matlab_params(cmd, extra_args):
+def matlab_params(cmd, is_windows, extra_args):
     param_fname = mktemp()
     # XXX I have no idea why '\n' instead of the ``%c...,10`` hack fails - bug
     # in matlab's cmdline parsing? (``call`` doesn't do shell mangling, so that's not it...)
     code = ("fid = fopen('%s', 'wt');" % param_fname +
             r"fprintf(fid, '%s%c%s%c%s%c', version, 10, matlabroot, 10, computer, 10);" +
             "fclose(fid); quit")
+    if is_windows:
+        code = '"' + code + '"'
     cmd += ['-r', code]
     fh = None
     try:
@@ -110,10 +112,11 @@ WINDOWS SPECIFIC ISSUE? Unable to remove %s; please delete it manually
 WINDOWS=sys.platform.startswith('win')
 if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
     cmd = [MATLAB_COMMAND, "-nodesktop",  "-nosplash"]
-    if not WINDOWS:
-        extra_args = dict(stdout=open('/dev/null', 'wb'))
-    else:
+    if WINDOWS:
         extra_args = {}
+        cmd += ["-wait"]
+    else:
+        extra_args = dict(stdout=open('/dev/null', 'wb'))   
     # FIXME: it is necessary to call matlab to figure out unspecified install
     # parameters but only if the user actually intends to build something
     # (e.g. not for making a sdist or running a clean or --author-email etc.).
@@ -123,7 +126,7 @@ if None in (MATLAB_VERSION, MATLAB_DIR, PLATFORM_DIR):
         re.search("sdist|clean", sys.argv[1]) or
         len(sys.argv) == 2 and sys.argv[1].startswith('--') or
         sys.argv[-1].startswith('--help')):
-        queried_version, queried_dir, queried_platform_dir = matlab_params(cmd, extra_args)
+        queried_version, queried_dir, queried_platform_dir = matlab_params(cmd, WINDOWS, extra_args)
     else:
         queried_version, queried_dir, queried_platform_dir = ["WHATEVER"]*3
     MATLAB_VERSION = MATLAB_VERSION or queried_version
